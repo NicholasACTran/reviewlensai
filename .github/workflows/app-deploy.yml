@@ -38,6 +38,17 @@ jobs:
           # Fail loudly if the URL is malformed — it becomes the Validator CORS origin (spec §6).
           case "$URL" in https://main.*.amplifyapp.com) ;; *) echo "Bad Amplify URL: $URL" && exit 1 ;; esac
           aws ssm put-parameter --name /reviewlensai/amplify/url --type String --overwrite --value "$URL"
+      - name: Apply Amplify hosting rewrite rules (SPA deep-link support — declarative, from the checked-in file)
+        run: |
+          # The app uses client-side routing (React Router). Without a catch-all rewrite, a hard GET
+          # to /job/:id (refresh / bookmark / shared link) 404s because no such file exists. This rule
+          # rewrites any path that is NOT a known static asset to /index.html with status 200, letting
+          # the SPA router resolve it. update-app REPLACES customRules, so the file is the single source
+          # of truth (idempotent on every deploy). Verify the JSON parses before applying.
+          python -c "import json; json.load(open('amplify-custom-rules.json'))"
+          aws amplify update-app --app-id ${{ secrets.AMPLIFY_APP_ID }} \
+            --custom-rules file://amplify-custom-rules.json >/dev/null
+          echo "Applied $(jq length amplify-custom-rules.json) Amplify rewrite rule(s)."
       - name: Build frontend (bundles real outputs + validator URL if the scraper is deployed)
         run: |
           VURL=$(aws ssm get-parameter --name /reviewlensai/scraper/validatorUrl --query Parameter.Value --output text 2>/dev/null || echo "")
