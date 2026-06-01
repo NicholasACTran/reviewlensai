@@ -130,46 +130,28 @@ cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai" \
 
 ---
 
-## Task 4: Pre-merge sandbox validation (isolated — no live infra touched)
+## Task 4: ~~Pre-merge sandbox validation~~ — DROPPED (sandbox structurally infeasible)
 
-**Files:** none. Deploys the branch to a throwaway Amplify sandbox stack, proves the schema deploys and that the generated condition input is what PR-3's guard needs, then tears the sandbox down.
+**Status: removed during execution.** An `ampx sandbox` deploy collides with the
+live main stack: `app/amplify/backend.ts` hardcodes the SSM parameter *names*
+`/reviewlensai/appsync/{url,apiKey}`, and SSM names are singletons per
+account/region — so a second backend deployment fails to create them and rolls
+back. (Verified empirically: the sandbox synthesized + type-checked + built assets
+cleanly, then rolled back on `AppSyncUrlParam/AppSyncApiKeyParam` "already exists";
+main params stayed intact.)
 
-- [ ] **Step 1: Deploy the branch to an isolated sandbox**
+The two things the sandbox would have validated are covered elsewhere:
+- **Schema synth/typecheck/build on the upgraded Amplify** — already proven (the
+  sandbox reached CloudFormation create before the SSM collision; also `npm run
+  typecheck` is green).
+- **`analyticsStatus` → `ModelStringInput` with `attributeExists`** — validated
+  **post-merge** in Task 6 Step 3 against the real deployed API, where the new
+  schema actually exists. (`a.string()` → `ModelStringInput` is standard Amplify
+  behavior; the post-merge introspection is the empirical confirmation.)
 
-Run:
-```bash
-cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai/app" \
-  && npx ampx sandbox --once --identifier precursor-validate
-```
-Expected: a sandbox CloudFormation stack deploys successfully and the command exits (the `--once` flag deploys then returns). This proves the upgraded backend + new schema fields synthesize and deploy without error. A failure here (synth/deploy) is caught with zero impact on live staging.
-
-- [ ] **Step 2: Introspect the sandbox API and confirm the guard-critical type shape**
-
-Run:
-```bash
-cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai/app" \
-  && API_ID=$(jq -r '.data.url' amplify_outputs.json | sed -E 's#https://([^.]+)\.appsync-api.*#\1#') \
-  && echo "sandbox API_ID=$API_ID" \
-  && aws appsync get-introspection-schema --api-id "$API_ID" --format SDL --region us-east-1 /tmp/sbx-schema.graphql \
-  && echo "--- ModelJobConditionInput must exist (scraper hard-codes the name) ---" \
-  && grep -q "input ModelJobConditionInput" /tmp/sbx-schema.graphql && echo "OK ModelJobConditionInput present" \
-  && echo "--- analyticsStatus condition entry must be ModelStringInput (has attributeExists) ---" \
-  && grep -A40 "input ModelJobConditionInput" /tmp/sbx-schema.graphql | grep -E "analyticsStatus:\s*ModelStringInput" && echo "OK analyticsStatus -> ModelStringInput" \
-  && echo "--- ModelStringInput must expose attributeExists ---" \
-  && grep -A20 "input ModelStringInput" /tmp/sbx-schema.graphql | grep -q "attributeExists" && echo "OK attributeExists available"
-```
-Expected: all four `OK ...` lines print. This definitively confirms PR-3's `{ analyticsStatus: { attributeExists: false } }` guard is buildable and that the scraper's `ModelJobConditionInput` name survives the upgrade. If `analyticsStatus` resolves to an enum input instead, STOP — the field must stay `a.string()`.
-
-- [ ] **Step 3: Tear the sandbox down**
-
-Run:
-```bash
-cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai/app" \
-  && npx ampx sandbox delete --identifier precursor-validate --yes \
-  && git checkout -- amplify_outputs.json \
-  && git status --short amplify_outputs.json
-```
-Expected: sandbox stack deleted (Important — leaving it costs money). **`amplify_outputs.json` is git-TRACKED** (committed from before this branch), and `ampx sandbox` repointed it at the now-deleted sandbox API — so `git checkout -- amplify_outputs.json` restores the staging-pointing version. The final `git status` must show **nothing** for that file (clean). Never commit the sandbox-pointing variant.
+*(If isolated pre-merge validation is ever needed, the fix is to gate the
+`StringParameter` creation in `backend.ts` to non-sandbox deploys — out of scope
+for this precursor.)*
 
 ---
 
@@ -182,11 +164,10 @@ Expected: sandbox stack deleted (Important — leaving it costs money). **`ampli
 Run:
 ```bash
 TABLE=$(aws dynamodb list-tables --region us-east-1 --query "TableNames[?starts_with(@,'Job-')]" --output text) \
-  && WC=$(echo "$TABLE" | wc -w) \
-  && [ "$WC" -eq 1 ] || { echo "Expected exactly one Job- table, got: $TABLE"; exit 1; } \
-  && aws dynamodb describe-table --table-name "$TABLE" --region us-east-1 --query "Table.{Id:TableId,Created:CreationDateTime}" --output json | tee /tmp/jobtable-before.json
+  && [ "$(echo "$TABLE" | wc -w)" -eq 1 ] || { echo "Expected exactly one Job- table, got: $TABLE"; exit 1; } \
+  && aws dynamodb describe-table --table-name "$TABLE" --region us-east-1 --query "Table.TableId" --output text | tee /tmp/jobtable-before-id.txt
 ```
-Expected: exactly one `Job-...` table; prints its `TableId` + `CreationDateTime`. **Record the `TableId`** in the PR body — Task 6 compares against it (a change ⇒ the table was replaced ⇒ data loss).
+Expected: exactly one `Job-...` table; prints its `TableId`. **Record the `TableId`** in the PR body — Task 6 compares against it (a change ⇒ the table was replaced ⇒ data loss). (`jq` is unavailable in this shell — use `--query`/`--output text` everywhere, never `jq`.)
 
 - [ ] **Step 2: Push and open the PR**
 
@@ -246,30 +227,50 @@ Expected: `app-deploy` completes green.
 Run:
 ```bash
 TABLE=$(aws dynamodb list-tables --region us-east-1 --query "TableNames[?starts_with(@,'Job-')]" --output text) \
-  && aws dynamodb describe-table --table-name "$TABLE" --region us-east-1 --query "Table.{Id:TableId,Created:CreationDateTime}" --output json | tee /tmp/jobtable-after.json \
-  && diff <(jq -S . /tmp/jobtable-before.json) <(jq -S . /tmp/jobtable-after.json) && echo "TABLE UNCHANGED (no replacement)"
+  && AFTER=$(aws dynamodb describe-table --table-name "$TABLE" --region us-east-1 --query "Table.TableId" --output text) \
+  && BEFORE=$(cat /tmp/jobtable-before-id.txt) \
+  && echo "before=$BEFORE after=$AFTER" \
+  && [ "$BEFORE" = "$AFTER" ] && echo "TABLE UNCHANGED (no replacement)" || echo "REPLACED — go to Step 5"
 ```
-Expected: `TABLE UNCHANGED (no replacement)`. If `TableId` changed → the deploy replaced the table → **go to Step 4 (rollback)** and investigate before retrying.
+Expected: `TABLE UNCHANGED (no replacement)`. If `TableId` changed → the deploy replaced the table → **go to Step 5 (rollback)** and investigate.
 
-- [ ] **Step 3: Live scrape — prove the scraper's conditional mutations still work**
+- [ ] **Step 3: Introspect the deployed API — confirm the schema + guard-critical types**
 
-Run (one self-contained block; resolves the Validator URL, fires a scrape, polls the row):
+Now that the new schema is live, confirm the analytics fields exist and that
+`analyticsStatus` (a.string) generates `ModelStringInput` (with `attributeExists`)
+in the condition input — the PR-3 idempotency guard depends on this. Resolve the
+API id from the freshly-redeployed SSM url:
+```bash
+URL=$(MSYS_NO_PATHCONV=1 aws ssm get-parameter --name /reviewlensai/appsync/url --query Parameter.Value --output text --region us-east-1) \
+  && API_ID=$(echo "$URL" | sed -E 's#https://([^.]+)\.appsync-api.*#\1#') \
+  && echo "API_ID=$API_ID" \
+  && aws appsync get-introspection-schema --api-id "$API_ID" --format SDL --region us-east-1 /tmp/main-schema.graphql \
+  && grep -q "input ModelJobConditionInput" /tmp/main-schema.graphql && echo "OK ModelJobConditionInput present" \
+  && grep -A60 "input ModelJobConditionInput {" /tmp/main-schema.graphql | grep -E "analyticsStatus:\s*ModelStringInput" && echo "OK analyticsStatus -> ModelStringInput" \
+  && grep -A20 "input ModelStringInput {" /tmp/main-schema.graphql | grep -q "attributeExists" && echo "OK ModelStringInput.attributeExists present"
+```
+Expected: all three `OK` lines. Confirms the deploy reconciled the SSM url (it now resolves to a live API) AND that PR-3's `{ analyticsStatus: { attributeExists: false } }` guard is buildable. If the url still resolves to a missing API, the staging anomaly persists — STOP and investigate before relying on it.
+
+- [ ] **Step 4: Live scrape — prove the scraper's conditional mutations still work**
+
+Run (self-contained; `jq`-free — parses the Validator JSON with `node`):
 ```bash
 VURL=$(MSYS_NO_PATHCONV=1 aws ssm get-parameter --name /reviewlensai/scraper/validatorUrl --query Parameter.Value --output text --region us-east-1) \
   && TABLE=$(aws dynamodb list-tables --region us-east-1 --query "TableNames[?starts_with(@,'Job-')]" --output text) \
-  && JOB=$(curl -s -X POST "$VURL" -H 'content-type: application/json' -d '{"url":"https://store.steampowered.com/app/367520/Hollow_Knight/"}' | jq -r .jobId) \
-  && echo "jobId=$JOB" \
+  && RESP=$(curl -s -X POST "$VURL" -H 'content-type: application/json' -d '{"url":"https://store.steampowered.com/app/367520/Hollow_Knight/"}') \
+  && JOB=$(node -e "process.stdout.write((JSON.parse(process.argv[1]).jobId)||'')" "$RESP") \
+  && echo "validator resp=$RESP ; jobId=$JOB" \
   && for i in $(seq 1 36); do \
-       ST=$(aws dynamodb get-item --table-name "$TABLE" --region us-east-1 --key "{\"id\":{\"S\":\"$JOB\"}}" --query "Item.status.S" --output text); \
+       ST=$(aws dynamodb get-item --table-name "$TABLE" --region us-east-1 --key "{\"id\":{\"S\":\"$JOB\"}}" --query "Item.status.S" --output text 2>/dev/null); \
        echo "status=$ST"; \
        [ "$ST" = "SUCCEEDED" ] && { echo "PASS: scraper conditional mutations OK on upgraded schema"; break; }; \
        [ "$ST" = "FAILED" ] && { echo "FAIL: job FAILED — inspect scraper logs"; break; }; \
        sleep 5; \
      done
 ```
-Expected: `status` reaches `SUCCEEDED` and prints `PASS: ...`. This proves end-to-end that the upgraded AppSync schema still accepts the scraper's `UpdateJobInput` + `ModelJobConditionInput` conditional `updateJob` mutations (the surface most at risk from the upgrade). The created row is real but TTL-reaped via `expiresAt`. **Do not copy the API key into any saved transcript** (CLAUDE.md: scrub secrets).
+Expected: `status` reaches `SUCCEEDED` → `PASS`. Proves the upgraded AppSync schema still accepts the scraper's `UpdateJobInput` + `ModelJobConditionInput` conditional mutations. The created row is real but TTL-reaped. **Do not copy the API key/validator response into any saved transcript** (CLAUDE.md: scrub secrets).
 
-- [ ] **Step 4: Rollback (ONLY if Step 2 or 3 fails)**
+- [ ] **Step 5: Rollback (ONLY if Step 2/3/4 fails)**
 
 If the upgrade broke staging, revert the merge and redeploy from the last-good `main`:
 ```bash
