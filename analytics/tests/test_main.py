@@ -90,3 +90,9 @@ def test_terminal_write_guard_miss_reraises(monkeypatch):
     monkeypatch.setattr(main, "_read_doc", lambda key: {"reviews": []})
     with pytest.raises(AppSyncError):  # guard-miss raises → non-zero exit → DLQ (spec §8)
         main.handler(_event(), None)
+
+
+def test_selectionset_carries_chat_fields():
+    from reviewlensai_analytics.appsync import _FULL_JOB_FIELDS
+    assert "chatStatus" in _FULL_JOB_FIELDS
+    assert "chatErrorMessage" in _FULL_JOB_FIELDS

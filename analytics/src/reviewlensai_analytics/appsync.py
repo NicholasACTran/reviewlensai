@@ -18,7 +18,8 @@ class AppSyncError(Exception):
 _FULL_JOB_FIELDS = (
     "id status steamUrl appId gameName headerImage price totalReviews pctPositive "
     "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt "
-    "analyticsStatus analyticsErrorMessage analyticsJson"
+    "analyticsStatus analyticsErrorMessage analyticsJson "
+    "chatStatus chatErrorMessage"
 )
 # getJob is a direct query (not delivered over a subscription), so it only needs the fields the
 # handler actually reads to make its gating decisions.
