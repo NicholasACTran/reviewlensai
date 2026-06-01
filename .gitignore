@@ -1,0 +1,43 @@
+# --- Local agent / editor state ---
+.claude/settings.local.json
+screenshots/
+
+# --- Node ---
+node_modules/
+dist/
+build/
+.next/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- CDK ---
+cdk.out/
+.cdk.staging/
+
+# --- Amplify ---
+.amplify/
+amplify_outputs*.json
+amplifyconfiguration*.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+
+# --- OS ---
+.DS_Store
+Thumbs.db
