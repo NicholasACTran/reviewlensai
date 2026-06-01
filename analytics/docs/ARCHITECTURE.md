@@ -1,5 +1,13 @@
 # Analytics - Architecture
 
+> **As-built note (Phase 1):** the scraper was reimplemented as Lambdas (no AWS
+> Batch). The cross-domain trigger below — an `aws.batch` `Batch Job State Change`
+> rule keyed on `/reviewlensai/scraper/jobQueueArn` — is **superseded**: the
+> scraper now emits a custom `ScrapeSucceeded` event on the `reviewlensai` bus
+> (`/reviewlensai/scraper/eventBusName`). The analytics *worker* may still run on
+> Batch/Fargate; only the scraper→analytics trigger changed. This doc is Phase 2
+> aspirational and will be reconciled when Phase 2 is specced.
+
 ## AWS resources (CDK: `analytics/cdk/lib/analytics-stack.ts`)
 
 - **AnalyticsSubmitter Lambda** (Node 20, arm64, 256 MB, 15s timeout). No public URL — invoked exclusively by EventBridge. Reads the `Job` row via AppSync `getJob`, gates idempotency, writes `analyticsStatus: PENDING`, then calls `Batch.SubmitJob`.

@@ -8,11 +8,16 @@ Review Lens AI is a monorepo project deployed via GitHub actions onto AWS infras
 
 ### Scraper
 
-The scraper service's main technical domain are AWS Batch jobs that can be triggered to scrape Steam games review data and put the data onto AWS S3. The frontend will trigger the scraper, track it, and query the S3 data via a set of Lambda functions. See `scraper/docs/CONTEXT.md` for more details.
+The scraper service runs as two Python Lambdas — a synchronous **Validator**
+(public Function URL) and an asynchronous **Scraper** — that scrape Steam game
+review data and put it onto AWS S3 (capped at 10k reviews/game). The frontend
+triggers the Validator, then tracks the job in real time via the shared `Job`
+row (DynamoDB/AppSync). (The original Batch/Fargate/ECR design was replaced with
+Lambda in Phase 1 for simplicity.) See `scraper/docs/CONTEXT.md` for more details.
 
 ### Analytics
 
-Triggered by the scraper's Batch SUCCEEDED EventBridge event, an AnalyticsSubmitter Lambda queues a Python Analytics Batch job on Fargate. The Batch job runs over the S3 data that was scraped and produces summarized data analytics (sentiment series, word associations, helpful reviews) which it writes back onto the same `Job` row via AppSync mutation for the frontend to subscribe to and display. See `analytics/docs/CONTEXT.md` for more details.
+Triggered by the scraper's custom `ScrapeSucceeded` EventBridge event (on the `reviewlensai` bus), an AnalyticsSubmitter Lambda queues a Python Analytics Batch job on Fargate. The Batch job runs over the S3 data that was scraped and produces summarized data analytics (sentiment series, word associations, helpful reviews) which it writes back onto the same `Job` row via AppSync mutation for the frontend to subscribe to and display. See `analytics/docs/CONTEXT.md` for more details.
 
 ### Chat
 

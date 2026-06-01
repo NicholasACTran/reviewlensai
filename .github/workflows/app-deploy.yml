@@ -3,7 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/app-deploy.yml"]
+    paths:
+      - "app/**"
+      - "!app/docs/**"
+      - ".github/workflows/app-deploy.yml"
 permissions:
   id-token: write
   contents: read

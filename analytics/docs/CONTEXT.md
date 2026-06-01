@@ -7,7 +7,12 @@ using classical ML techniques (no LLMs in this domain).
 
 ## Domain Boundary
 
-- **Trigger:** Job-complete event emitted by `scraper/`.
+- **Trigger:** the scraper's custom `ScrapeSucceeded` EventBridge event on the
+  `reviewlensai` bus (name in SSM `/reviewlensai/scraper/eventBusName`).
+  > As-built note (Phase 1 changed the scraper): the scraper is now Lambda-based,
+  > so there is **no Batch `Job State Change` event and no `jobQueueArn`** to key
+  > off. This file's older Batch-trigger references below predate that change and
+  > will be reconciled when Phase 2 is specced.
 - **Compute:** AWS Batch job reads raw reviews from S3.
 - **Output:** Summarized analytics written to a DynamoDB table.
 - **Downstream:**
