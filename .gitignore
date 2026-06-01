@@ -1,6 +1,7 @@
 # --- Local agent / editor state ---
 .claude/settings.local.json
 screenshots/
+.superpowers/
 
 # --- Node ---
 node_modules/
