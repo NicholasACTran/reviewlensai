@@ -14,7 +14,8 @@ class AppSyncError(Exception): ...
 _JOB_FIELDS = (
     "id status steamUrl appId gameName headerImage price totalReviews pctPositive "
     "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt "
-    "analyticsStatus analyticsErrorMessage analyticsJson"
+    "analyticsStatus analyticsErrorMessage analyticsJson "
+    "chatStatus chatErrorMessage"
 )
 _CREATE = f"""
 mutation Create($input: CreateJobInput!) {{ createJob(input: $input) {{ {_JOB_FIELDS} }} }}
