@@ -225,12 +225,13 @@ analytics also read. Fixtures are ingested directly via `StartIngestionJob`
 (not via a scrape), so they emit no `ScrapeSucceeded` event and **cannot
 re-trigger the analytics Lambda**. Isolation rests entirely on the unbuilt
 `arch` boundary #3 (server-derived `jobId` metadata filter) over the *shared*
-Aurora KB + S3 bucket — a leaked/typo'd jobId filter is the real collision
-surface, so #3 must be code-reviewed before the first campaign. Teardown
-(post-build) deletes the throwaway job's KB docs, S3 objects, **the KB vector
-rows for that `jobId` (delete-by-metadata-filter — orphaned `[job=<id>]` chunks
-otherwise survive in shared pgvector)**, and the `Job`/`ChatMessage` rows after
-each campaign. A small set of **malicious review fixtures** (English reviews
+S3 Vectors KB + S3 source bucket — a leaked/typo'd jobId filter is the real
+collision surface, so #3 must be code-reviewed before the first campaign.
+Teardown (post-build) deletes the throwaway job's KB docs and vectors via
+**delete-by-`jobId` metadata** (enforcement spec §8 — orphaned
+`[job=<id>]` chunks otherwise survive in the shared index), the chat
+source-bucket objects, and the `Job` row after each campaign.  A small set of
+**malicious review fixtures** (English reviews
 crafted with injection payloads, each carrying a **unique sentinel string** so
 `ignores_injection` is well-defined) are ingested under that same isolated job
 to exercise #7. **None of this runs until the bot is built** (§0).
@@ -245,9 +246,9 @@ file.
    (Playwright) **and** the `ChatTurn` entry point (API-direct), running the
    corpus + a **bounded** fresh exploratory batch each round. Screenshots →
    top-level `screenshots/`. **Turns are serialized per job**, and the FE channel
-   and API-direct channel use **distinct throwaway job ids** so concurrent
-   USER/ASSISTANT `ChatMessage` writes can't race the AppSync subscription merge
-   and be misread as bot failures.
+   and API-direct channel use **distinct throwaway job ids** to keep each
+   channel's `ChatTurn` logs unambiguous and prevent cross-channel turn ordering
+   from being misread as bot failures.
 2. **Evaluator (hybrid judge, inline role):** runs deterministic `checks` first
    (fast, reproducible); routes only `rubric`-bearing cases (grounding, neutral
    toxic-summary, #7, over-refusal) to the LLM judge. Emits per-case verdicts +
@@ -290,8 +291,8 @@ meaningless (overfitting). Flagged here so it isn't later read as scope drift.
 ### 5.2 Observability
 
 Per the validation-observability preference, every red-team round watches
-**backend state alongside the browser** — the throwaway `Job`/`ChatMessage` rows
-and the `ChatTurn` logs — so a refusal's cause (which guard fired) is attributable
+**backend state alongside the browser** — the throwaway `Job` row and the
+`ChatTurn` logs — so a refusal's cause (which guard fired) is attributable
 in real time and FE-vs-backend slowness is diagnosable. (These rows/logs exist
 only once the deferred build lands.)
 
