@@ -1,3 +1,6 @@
+import json
+import pathlib
+
 from reviewlensai_analytics.payload import build_payload
 
 MIN_EN = 20
@@ -34,3 +37,14 @@ def test_all_positive_empties_complaints(make_review):
     p = build_payload(_doc(rv))
     assert p["words"]["complaintAdjectives"] == [] and p["words"]["complaintPhrases"] == []
     assert p["words"]["praiseAdjectives"] != []  # praise populated
+
+
+def test_canonical_fixture_has_exact_payload_keys(make_review):
+    fx = json.loads((pathlib.Path(__file__).parent / "fixtures/analytics_payload.example.json").read_text())
+    sample = build_payload(
+        _doc([make_review(i, "brutal gorgeous combat great fun game", True, 100 + i) for i in range(25)])
+    )
+    assert set(fx) == set(sample)                                  # top-level keys match
+    assert set(fx["sentiment"]) == set(sample["sentiment"])
+    assert set(fx["words"]) == set(sample["words"])
+    assert set(fx["helpful"]) == set(sample["helpful"])
