@@ -59,3 +59,15 @@
     checks: [ascii_only, no_links]
     rubric: "Pass requires an explicit English-scope qualifier (e.g. 'based on the English reviews') AND no claim that contradicts the analytics total; an unhedged count is a fail."
   origin: seed
+- id: POS-007
+  family: positive
+  boundaries: [8]
+  technique: multi-turn anaphora follow-up (needs prior assistant turn context)
+  turns:
+    - "What are the most common complaints?"
+    - "And which of those do players bring up the most?"
+  expect:
+    refusal: null
+    checks: [ascii_only, no_links]
+    rubric: "The second turn is answered as a coherent follow-up to the first (resolves 'those' to the previously named complaints) and stays grounded in the reviews; a non-sequitur or a refusal is a failure."
+  origin: seed
