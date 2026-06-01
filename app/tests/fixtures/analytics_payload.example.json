@@ -1,0 +1,195 @@
+{
+  "hasData": true,
+  "coversFullHistory": true,
+  "totalAnalyzed": 25,
+  "englishReviewCount": 25,
+  "sentiment": {
+    "weekly": [
+      {
+        "period": "2024-W02",
+        "avgCompound": 0.926,
+        "reviewCount": 18
+      },
+      {
+        "period": "2024-W03",
+        "avgCompound": -0.9186,
+        "reviewCount": 7
+      }
+    ],
+    "analyzedAvgCompound": 0.4095
+  },
+  "words": {
+    "overallAdjectives": [
+      {
+        "term": "brutal",
+        "count": 18
+      },
+      {
+        "term": "gorgeous",
+        "count": 18
+      },
+      {
+        "term": "great",
+        "count": 18
+      },
+      {
+        "term": "terrible",
+        "count": 7
+      },
+      {
+        "term": "awful",
+        "count": 7
+      }
+    ],
+    "overallPhrases": [
+      {
+        "term": "boring awful",
+        "count": 7
+      },
+      {
+        "term": "clunky slow",
+        "count": 7
+      },
+      {
+        "term": "slow disappointing",
+        "count": 7
+      },
+      {
+        "term": "terrible boring",
+        "count": 7
+      },
+      {
+        "term": "disappointing terrible",
+        "count": 6
+      }
+    ],
+    "praiseAdjectives": [
+      {
+        "term": "brutal",
+        "count": 18
+      },
+      {
+        "term": "gorgeous",
+        "count": 18
+      },
+      {
+        "term": "great",
+        "count": 18
+      }
+    ],
+    "praisePhrases": [
+      {
+        "term": "adventure exciting",
+        "count": 18
+      },
+      {
+        "term": "brutal gorgeous",
+        "count": 18
+      },
+      {
+        "term": "combat great",
+        "count": 18
+      },
+      {
+        "term": "exciting thrilling",
+        "count": 18
+      },
+      {
+        "term": "fun adventure",
+        "count": 18
+      }
+    ],
+    "complaintAdjectives": [
+      {
+        "term": "terrible",
+        "count": 7
+      },
+      {
+        "term": "awful",
+        "count": 7
+      }
+    ],
+    "complaintPhrases": [
+      {
+        "term": "awful combat",
+        "count": 7
+      },
+      {
+        "term": "boring awful",
+        "count": 7
+      },
+      {
+        "term": "clunky slow",
+        "count": 7
+      },
+      {
+        "term": "combat clunky",
+        "count": 7
+      },
+      {
+        "term": "slow disappointing",
+        "count": 7
+      }
+    ]
+  },
+  "helpful": {
+    "positive": [
+      {
+        "text": "brutal gorgeous combat great fun adventure exciting thrilling",
+        "votesUp": 4,
+        "votesFunny": 0,
+        "votedUp": true,
+        "createdAt": 1704726000,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      },
+      {
+        "text": "brutal gorgeous combat great fun adventure exciting thrilling",
+        "votesUp": 4,
+        "votesFunny": 0,
+        "votedUp": true,
+        "createdAt": 1704711600,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      },
+      {
+        "text": "brutal gorgeous combat great fun adventure exciting thrilling",
+        "votesUp": 4,
+        "votesFunny": 0,
+        "votedUp": true,
+        "createdAt": 1704697200,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      }
+    ],
+    "negative": [
+      {
+        "text": "terrible boring awful combat clunky slow disappointing",
+        "votesUp": 3,
+        "votesFunny": 0,
+        "votedUp": false,
+        "createdAt": 1705294800,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      },
+      {
+        "text": "terrible boring awful combat clunky slow disappointing",
+        "votesUp": 3,
+        "votesFunny": 0,
+        "votedUp": false,
+        "createdAt": 1705284000,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      },
+      {
+        "text": "terrible boring awful combat clunky slow disappointing",
+        "votesUp": 2,
+        "votesFunny": 0,
+        "votedUp": false,
+        "createdAt": 1705291200,
+        "language": "english",
+        "playtimeForeverHours": 2.0
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import { Amplify } from "aws-amplify";
 import outputs from "../amplify_outputs.json";
 import { config } from "./config";
 import App from "./App";
+import "./index.css";
 
 // Static import → Vite bundles amplify_outputs.json at build time (the deploy pipeline regenerates
 // it before `vite build`). A committed placeholder keeps local/fake builds + CI typecheck working.
