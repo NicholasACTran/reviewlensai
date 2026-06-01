@@ -10,12 +10,23 @@ from .s3io import read_scrape_json
 from .log import log_json
 
 _S3 = boto3.client("s3")
-_EVENTS = boto3.client("events")
+# Lazy: EventBridge is regional, so boto3.client("events") raises NoRegionError if
+# created at import in a no-region env (the CI unit-test step, before AWS creds are
+# configured). The Lambda runtime always has a region, so defer creation to first
+# use. (s3 above tolerates no region; events does not.)
+_EVENTS = None
+
+
+def _events():
+    global _EVENTS
+    if _EVENTS is None:
+        _EVENTS = boto3.client("events")
+    return _EVENTS
 
 
 def _emit_analytics_succeeded(job_id: str, s3_key: str) -> None:
     try:                                              # NON-FATAL
-        _EVENTS.put_events(Entries=[{
+        _events().put_events(Entries=[{
             "Source": "reviewlensai.analytics",
             "DetailType": "AnalyticsSucceeded",
             "EventBusName": os.environ["EVENT_BUS_NAME"],
