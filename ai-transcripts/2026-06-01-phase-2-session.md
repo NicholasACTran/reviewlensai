@@ -1,11 +1,13 @@
 # Session Transcript — Phase 2 (Analytics)
 
 **Date:** 2026-06-01
-**Full transcript:** `2026-06-01-phase-2-session.jsonl` (raw Claude Code session JSONL, secrets scrubbed — AWS account id → `<accountId>`, any `da2-` AppSync key → `<appsyncApiKey>`; note the API key *value* was never queried this session, only its SSM param name).
+**Full transcript (raw Claude Code session JSONL, secrets scrubbed — AWS account id → `<accountId>`, any `da2-` AppSync key → `<appsyncApiKey>`):**
+- `2026-06-01-phase-2-session.jsonl` — **Part 1** (brainstorm → spec → plans → precursors → worker 3a), up to the pre-compaction pause.
+- `2026-06-01-phase-2-session-part2.jsonl` — **Part 2** (post-compaction): infra 3b, frontend 3c, the worker selectionSet bug fix, docs reconciliation, and the SPA deep-link rewrite.
 
-## Outcome (at the point this transcript was saved)
+## Outcome
 
-Phase 2 (Analytics) fully brainstormed, specced, DA-reviewed, planned, and partially executed. **Two precursor PRs shipped & validated on staging; the analytics worker (3a) merged to `main`.** Session paused here for compaction before executing the analytics infra (3b) and frontend (3c) plans.
+**Phase 2 (Analytics) is complete: 3b + 3c implemented, deployed, and validated end-to-end on staging.** A real scrape now produces `analyticsStatus: SUCCEEDED` + `analyticsJson`, and the live dashboard renders in the browser (sentiment chart, word association, helpful reviews). The post-deploy E2E caught and fixed a real integration bug (worker mutation selectionSet) and a pre-existing SPA deep-link gap. (Part 1 below was written at the 3a pause; **Part 2** records everything after.)
 
 ## Session arc
 
@@ -36,4 +38,33 @@ Phase 2 (Analytics) fully brainstormed, specced, DA-reviewed, planned, and parti
 
 ## Memories saved this session
 
-`reference_onedrive_npm_bin` (OneDrive blocks `node_modules/.bin` shims → invoke tools via `node node_modules/...`); `reference_appsync_apiid_vs_url` (AppSync api id ≠ GraphQL URL subdomain — don't parse the id from the URL).
+`reference_onedrive_npm_bin` (OneDrive blocks `node_modules/.bin` shims → invoke tools via `node node_modules/...`); `reference_appsync_apiid_vs_url` (AppSync api id ≠ GraphQL URL subdomain — don't parse the id from the URL). **Part 2** also rewrote `feedback_appsync_subscription_merge` (see below).
+
+---
+
+# Part 2 (post-compaction): 3b infra, 3c frontend, bug fix, docs, SPA rewrite
+
+## What shipped
+
+- **3b — analytics infra (PR #5, deployed).** CDK stack: one EventBridge(`ScrapeSucceeded`)-triggered Python 3.12 Lambda, S3 read scoped to `jobs/*` (§6.1 precheck: no bucket policy → identity grant suffices), async `retryAttempts:0` → SQS DLQ, **+ bounded EventBridge target delivery retries (2) to the same DLQ** (DA fix — naive `retryAttempts:0` would silently drop throttled deliveries under `reservedConcurrency:3`), 2 CloudWatch alarms; `analytics-deploy.yml` (NLTK-bundled asset + no-network smoke test). 6/6 CDK tests; `__pycache__` stripped from the asset (DA fix). Deploy green; E2E: real scrape → `analyticsStatus: SUCCEEDED` + `analyticsJson`, live payload shape **byte-for-byte matches the canonical fixture**.
+- **3c — analytics dashboard (PR #6, deployed).** `AnalyticsPayload` + tolerant `parseAnalytics` (validates all 6 `words` arrays — DA fix), analytics state threaded through `Job`/`JobView`/`normalize` (with regression tests — whole-PR DA fix), FE-side monthly aggregation (incl. year-boundary test — DA fix), layout-B grid (Recharts sentiment chart w/ weekly·monthly toggle, praise·complaint·overall word association, helpful pos/neg cards), FakeJobClient analytics lifecycle. Chip-key tie-break + `role=group` (not `tablist`) ARIA — DA fixes. 48 tests, tsc + eslint + prod build green.
+
+## The integration bug the E2E caught (PR #7)
+
+After 3b+3c deployed, the backend wrote analytics correctly but **the dashboard never rendered live** — Amplify's `observeQuery` threw `TypeError: Cannot read properties of null (reading 'id')` on each analytics update. Root cause: the worker's `updateJob` returned a **minimal** selectionSet (`id status s3Key analyticsStatus`); AppSync managed subscriptions deliver only the *triggering mutation's* selection set (they do NOT re-read the full item), so the FE got a partial row (foreign fields null) that crashed Amplify's merge. The planning-time "worker is exempt from the full-row rule" decision was **wrong**. Fix: worker `updateJob` returns the full `Job` row (`_FULL_JOB_FIELDS`, mirroring the scraper) + regression test; spec §3 corrected; memory `feedback_appsync_subscription_merge` rewritten (the canonical fix is "every writer returns the full row," not a FE merge shim — the shim it referenced no longer exists). Redeployed → **E2E PASS**: live dashboard rendered (sentiment over 10 weeks, "most recent 10,000 reviews" caption, real adjectives/phrases, helpful reviews with vote/funny/playtime/language chips); Monthly toggle verified live. Screenshot: `screenshots/phase2-analytics-dashboard-e2e.png`.
+
+## Other fixes & closeout
+
+- **Lockfile reconciliation (a83cfda).** The `npm install recharts` (run under the flaky OneDrive `node_modules`) pruned ~428 lines of `@aws-amplify/backend` transitive entries from `app/package-lock.json`, breaking `npm ci` in app-deploy. Fixed via `npm install --package-lock-only`.
+- **Docs reconciliation.** `analytics/docs/{CONTEXT,ARCHITECTURE}.md` + OVERVIEW's analytics section rewritten from the aspirational Batch/Submitter/ECR/spaCy design to the as-built single-Lambda/NLTK reality; spec §3 selectionSet exemption corrected.
+- **SPA deep-link rewrite (PR #8, deployed).** Hard GETs to `/job/:id` (refresh/bookmark) 404'd — the Amplify app had `customRules: []`. Added the canonical SPA catch-all (non-asset → `/index.html`, 200) as a **checked-in `app/amplify-custom-rules.json` applied by an `app-deploy.yml` step** (`aws amplify update-app --custom-rules file://…`) — declarative & version-controlled, not a one-off CLI mutation. Verified: rule present on the app; a hard deep-link load now returns 200 and renders the full dashboard (also proving the `observeQuery` initial-query path selects the analytics fields).
+
+## Process notes
+
+- Executed subagent-driven: per half (logic / UI) an implementer + spec-compliance review + Devil's-Advocate code-quality review, plus a **whole-PR DA review** on 3c (which surfaced the partial-event risk and the normalize coverage gap). Deploys gated on the user's explicit go-ahead ("implementation, deployment, and testing of 3b and 3c").
+- Validation followed the observe-backend-alongside-browser practice: DynamoDB `analyticsStatus` polled in parallel with the live browser to separate FE-render from backend timing.
+
+## State at completion
+
+- **On `main`** (`a221433`): 3b + 3c + worker fix + SPA rewrite merged & deployed; analytics + app domains live on staging; docs/spec/memory reconciled.
+- **No production deploy** (PoC = staging only).
