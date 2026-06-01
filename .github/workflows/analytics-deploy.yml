@@ -1,0 +1,58 @@
+name: analytics-deploy
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "analytics/**"
+      - "!analytics/docs/**"
+      - ".github/workflows/analytics-deploy.yml"
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Unit tests + lint
+        working-directory: analytics
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q
+          ruff check src tests
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "${{ secrets.AWS_DEPLOY_ROLE_ARN }}"
+          aws-region: us-east-1
+      - name: "Build Lambda asset (CLEAN build dir: package + vendored deps + bundled nltk_data)"
+        working-directory: analytics
+        run: |
+          rm -rf build && mkdir -p build
+          cp -r src/reviewlensai_analytics build/
+          # Drop any __pycache__ the prior pytest step compiled into src so it doesn't bloat the
+          # asset / churn the CDK asset hash on every push.
+          find build/reviewlensai_analytics -name __pycache__ -type d -prune -exec rm -rf {} +
+          pip install "nltk==3.9.1" requests -t build/
+          python -m nltk.downloader -d build/nltk_data \
+            vader_lexicon averaged_perceptron_tagger_eng punkt_tab stopwords
+      - name: NLTK bundle smoke test (spec §11 — catches a mis-bundle pre-deploy)
+        working-directory: analytics/build
+        env:
+          PYTHONPATH: ${{ github.workspace }}/analytics/build
+        run: |
+          python -c "import nltk; nltk.data.path[:] = ['$PWD/nltk_data']; \
+            import reviewlensai_analytics.sentiment as s, reviewlensai_analytics.words as w; \
+            assert isinstance(s.compound('great game'), float); \
+            assert w.top_adjectives(['brutal gorgeous game'], exclude=set()); \
+            print('NLTK bundle resolves from build/nltk_data only')"
+      - name: CDK unit tests + deploy (reads scraper+app SSM at synth — both must be deployed first)
+        working-directory: analytics/cdk
+        run: |
+          npm ci
+          npm test
+          npx cdk deploy --require-approval never
