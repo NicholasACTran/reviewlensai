@@ -9,59 +9,38 @@ Job's retrieved review and analytics chunks.
 
 ## Domain Boundary
 
-- **Inference:** AWS Bedrock Agent + Bedrock Knowledge Base + Bedrock
-  Guardrails. Two Lambdas (`ChatIngester`, `ChatTurn`).
+- **Inference (planned — stack TBD):** a Bedrock-based agent + knowledge base
+  + guardrails is the *candidate* shape (not built, not decided). Expected
+  logical components: `ChatIngester` + `ChatTurn`.
 - **Knowledge:** scraped review JSON files (from `scraper/` S3) + the
   analytics JSON (from `analytics/`).
-- **Frontend integration:** `app/` calls the `ChatTurn` Lambda Function URL
-  directly (no direct Bedrock calls from the browser). Chat messages flow
-  back to the FE via AppSync subscription on a `ChatMessage` model.
+- **Frontend integration (planned):** `app/` will call the `ChatTurn` Lambda
+  Function URL directly (no direct Bedrock calls from the browser). Chat
+  messages will flow back to the FE via AppSync subscription on a `ChatMessage`
+  model.
 
-## Tech Stack
+## Tech Stack (CANDIDATE — not decided)
 
-- **Bedrock Agent** — `reviewlensai-chat-agent` in `us-east-1`.
-  - **Foundation model:** Amazon Nova Pro via US cross-region inference
-    profile (`us.amazon.nova-pro-v1:0`). Chosen over Anthropic Claude 3.5/4.5
-    Haiku because of an unresolved AWS Marketplace `INVALID_PAYMENT_INSTRUMENT`
-    block on Anthropic models on this account; Nova is AWS-native and skips
-    the Marketplace flow. (Spec v6 originally chose Claude 3.5 Haiku.)
-  - **Knowledge base:** Aurora Serverless v2 + pgvector via the L2
-    `@cdklabs/generative-ai-cdk-constructs` `amazonaurora.AmazonAuroraVectorStore`
-    + `bedrock.VectorKnowledgeBase`. Embeddings: Titan v2 1024-dim. Chunking
-    strategy: `NONE` (preserves the `[job=<jobId>]` text prefix on each chunk).
-  - **Guardrails:** `bedrock.Guardrail` with denied topics
-    (`off_scope_topics`, `system_prompt_extraction`, `external_link_engagement`,
-    `non_english_communication`), content filters at HIGH on all categories
-    (PROMPT_ATTACK HIGH-input / NONE-output), PII anonymization for
-    `General.{EMAIL,PHONE,NAME,ADDRESS,AGE}` + `Finance.CREDIT_DEBIT_CARD_NUMBER`,
-    contextual grounding + relevance at 0.75.
-- **Lambdas (Node 20):**
-  - **`ChatIngester`** — triggered on analytics Batch SUCCEEDED via
-    EventBridge OR via Function URL retry. Pre-flights the Job row, uploads
-    KB documents + sidecar metadata, calls `StartIngestionJob`, polls
-    `GetIngestionJob` to completion, writes `chatStatus` transitions.
-  - **`ChatTurn`** — Function URL POST handler. Sanitizes input, reads Job
-    row, creates USER + ASSISTANT ChatMessage rows, calls
-    `invokeAgentForJob` (the only sanctioned `bedrock-agent:InvokeAgent`
-    site — enforced via `eslint no-restricted-imports`), streams chunks
-    back via batched AppSync `update` mutations with full `selectionSet`.
-    Reserved concurrency: 10. Wall timeout: 80s (in-loop `Date.now()` check).
-- **Post-filters (output-side, in `ChatTurn`):** mirror what AWS doesn't
-  reliably enforce alone. See `chat/docs/engineering/CONTEXT.md` for the
-  complete list. Briefly: rewrites any of the following in the response
-  body to the canned refusal `"I can only discuss the review data for this
-  analysis."`:
-  - Bedrock Guardrails leak strings ("blocked by content filters")
-  - >20% non-ASCII output (Nova mirrors user language; we force English)
-  - System-prompt sentinel phrases (chunked exfiltration detection)
-  - Steam-platform scope drift terms (refunds/refund policy, storefront or
-    purchasing questions, account/billing, game keys, Steam Support, etc.
-    — broadened across red-team rounds to handle synonyms and hyphenated
-    variants)
-  - Also strips PII anonymization tokens (`{EMAIL}` etc.) to `[redacted]`
-- **Input pre-filter (input-side):** rejects user prompts with >20%
-  non-ASCII before any Bedrock call (deterministic English-only enforcement).
-- **CDK:** `chat/cdk/` package, deployed via `.github/workflows/chat-deploy.yml`
-  (workflow_dispatch only — Aurora provisioning takes ~5-10 min and is
-  costly to retry on local Docker, see `MEMORY.md` reference for the local
-  build gotchas).
+> The enforcement stack is **re-opened** for Phase 3 (see
+> `docs/specs/2026-06-01-phase-3-chat-boundaries-and-corpus-design.md` §1).
+> Phase 1/2 consistently dropped heavy infra; the items below are *candidates*
+> carried over from the original aspirational design, **not** decisions. The
+> stack is chosen in a separate architecture brainstorm before any build, and
+> a `chat/docs/ARCHITECTURE.md` (plus any deploy workflow) is written then.
+
+- **Grounding:** TBD — a vector knowledge base (e.g. Bedrock KB + Aurora
+  pgvector) *or* a lighter retrieval approach. To be decided.
+- **Model / guardrails:** TBD — Amazon Nova Pro + Bedrock Guardrails are
+  candidates, not committed.
+- **Compute:** TBD — `ChatIngester` (ingest + English-only filter) and
+  `ChatTurn` (FE-facing turn handler) are the expected logical components, but
+  their runtime is undecided. No `chat-deploy.yml` workflow exists yet.
+
+## Boundaries & refusal policy (decided)
+
+The bot's safety/scope boundaries and the closed 4-refusal set are specified in
+`docs/specs/2026-06-01-phase-3-chat-boundaries-and-corpus-design.md` (§2–§3) and
+verified by the corpus under `chat/red-team/`. Key decided points: English-only
+conversation; non-English reviews dropped at chat ingestion; per-job fresh
+session; grounded-or-`NO_DATA` (never fabricate); neutral toxic-summary (no
+verbatim slurs); server-derived `jobId` isolation.

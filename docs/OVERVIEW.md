@@ -21,20 +21,17 @@ Triggered by the scraper's custom `ScrapeSucceeded` EventBridge event (on the `r
 
 ### Chat
 
-The AI Chat bot is hosted via AWS Bedrock Agent (Amazon Nova Pro,
-us-east-1) with a Bedrock Knowledge Base backed by Aurora Serverless v2 +
-pgvector. Two Node 20 Lambdas: `ChatIngester` (EventBridge-triggered on
-analytics SUCCEEDED, uploads docs + sidecar metadata, kicks off
-`StartIngestionJob`) and `ChatTurn` (FE-facing Function URL, sanitizes input,
-invokes the agent via the `invokeAgentForJob` wrapper with a server-derived
-`jobId` metadata filter, streams chunks back via AppSync `ChatMessage`
-mutations with a full `selectionSet` so subscriptions deliver complete
-rows). Bedrock Guardrails attached at the agent level (denied topics,
-content filters at HIGH, PII anonymize, contextual grounding). Lambda
-output post-filters layer on top to handle Nova-specific edge cases
-(non-English mirror, system-prompt sentinel detection, Steam-platform
-synonym scope drift, PII token stripping). See `chat/docs/CONTEXT.md`
-for the per-component build details.
+> **Status: planned, not built.** The description is the *intended* shape; the
+> enforcement stack is being re-decided (see
+> `docs/specs/2026-06-01-phase-3-chat-boundaries-and-corpus-design.md`). No chat
+> resources or schema fields exist yet.
+
+The AI chat bot is planned as a per-job assistant grounded only on a single
+Job's scraped reviews + analytics, with a closed 4-refusal boundary model
+(English-only, grounded-or-refuse, neutral toxic-summary, server-derived job
+isolation). Candidate (undecided) infra: a Bedrock-based agent + knowledge base
++ guardrails with `ChatIngester`/`ChatTurn` components. Boundaries and the
+red-team corpus are specified and live under `chat/red-team/`.
 
 ### Deployment
 
@@ -47,9 +44,10 @@ This a PoC app, there will be no auth services.
 ### Testing
 
 Besides unit and integration testing. Scraper and analytics functionality
-can be tested E2E via AWS CLI. Chat is red-teamed locally via a Playwright
-+ API-direct adversarial-PM subagent (`.claude/agents/adversarial-pm.md`)
-against a corpus that'll be set and grown through exploratory testing.
+can be tested E2E via AWS CLI. Chat **will be** red-teamed locally via a
+Playwright + API-direct adversarial-PM subagent
+(`.claude/agents/adversarial-pm.md`) against the corpus under `chat/red-team/`,
+once the bot is built.
 
 ## Project Phases
 
@@ -65,14 +63,13 @@ In this second phase, these two domains can be setup in parallel. The analytics 
 
 ### Phase 3: Chat domain end-to-end
 
-Stood up the full chat stack: Bedrock Agent (Amazon Nova Pro via US
-cross-region inference profile), Bedrock Knowledge Base (Aurora Serverless
-v2 + pgvector backing, Titan v2 1024-dim embeddings, NONE chunking),
-Bedrock Guardrails (denied topics, content filters, PII anonymize,
-contextual grounding), `ChatIngester` + `ChatTurn` Lambdas, FE ChatDrawer
-+ ChatPanel + Citations + chat subscription hook. Schema additions
-(`Job.chatStatus`, `Job.chatErrorMessage`, `ChatMessage` model) merged to
-main.
+**In progress.** Phase 3 (a) specifies the chat bot's boundaries + red-team
+corpus (done — `docs/specs/2026-06-01-phase-3-chat-boundaries-and-corpus-design.md`,
+`chat/red-team/`), (b) re-decides the enforcement stack in an architecture
+brainstorm, then (c) builds the bot (`ChatIngester` + `ChatTurn` + chosen
+grounding/guardrails), the schema additions (`Job.chatStatus`,
+`Job.chatErrorMessage`, a `ChatMessage` model), and the FE chat UI — **none of
+which exist yet.**
 
 ### Phase 4: Tuning and additional functionality (future)
 
