@@ -29,3 +29,8 @@ test("S3 bucket blocks public access and has a lifecycle rule", () => {
     PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true },
   });
 });
+test("publishes the scrape bucket name to SSM for the analytics domain", () => {
+  synth().hasResourceProperties("AWS::SSM::Parameter", {
+    Name: "/reviewlensai/scraper/bucketName",
+  });
+});
