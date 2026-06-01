@@ -21,12 +21,11 @@ def _lambda():
     return boto3.client("lambda")
 
 def _resp(status: int, body: dict) -> dict:
-    return {"statusCode": status, "headers": {
-        "content-type": "application/json",
-        "access-control-allow-origin": ALLOWED_ORIGIN,
-        "access-control-allow-methods": "POST,OPTIONS",
-        "access-control-allow-headers": "content-type",
-    }, "body": json.dumps(body)}
+    # CORS is owned entirely by the Function URL CORS config. Setting CORS headers here too would
+    # produce DUPLICATE access-control-allow-origin headers, which browsers reject. Only set
+    # content-type here. (ALLOWED_ORIGIN env is retained for reference/tests but not echoed.)
+    return {"statusCode": status, "headers": {"content-type": "application/json"},
+            "body": json.dumps(body)}
 
 def _parse_app_id(url: str) -> str | None:
     try:
