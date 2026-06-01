@@ -18,9 +18,12 @@ export function useJob(client: JobClient, id: string, staleMs: number = STALE_MS
     const sub = client.observeJob(id).subscribe((items: Job[]) => {
       if (items.length === 0) return;            // [] = still waiting, not "not found"
       const job = items[0];
-      if (job.status !== lastStatus.current) { lastStatus.current = job.status; arm(); } // reset on real transition
+      if (job.status !== lastStatus.current) { lastStatus.current = job.status; arm(); } // reset on real SCRAPE transition (analyticsStatus changes are not watch-dogged)
       const v = toJobView(job);
-      if (v.kind !== "waiting") { if (timer.current) clearTimeout(timer.current); } // terminal: stop the clock
+      // Terminal SCRAPE state stops the clock. The analytics lifecycle (analyticsStatus RUNNING→
+      // SUCCEEDED) then runs un-timed: it's fast (seconds) and self-updates via the subscription, so
+      // a stuck "Analyzing…" only occurs if the subscription itself drops — an accepted PoC gap.
+      if (v.kind !== "waiting") { if (timer.current) clearTimeout(timer.current); }
       setView(v);
     });
     return () => { sub.unsubscribe(); if (timer.current) clearTimeout(timer.current); };
