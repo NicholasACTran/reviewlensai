@@ -9,11 +9,23 @@ class AppSyncError(Exception):
     ...
 
 
-_JOB_FIELDS = "id status s3Key analyticsStatus"
-_GET = f"query Get($id: ID!) {{ getJob(id: $id) {{ {_JOB_FIELDS} analyticsJson }} }}"
+# Full Job selectionSet for the UPDATE mutation. AppSync managed subscriptions deliver ONLY the
+# fields the triggering mutation selected, so the app's observeQuery (which subscribes with the full
+# model) receives whatever updateJob returns — any omitted field arrives as null. A minimal set here
+# made the FE's live subscription receive a partial row and crash Amplify's merge (null.id), so the
+# dashboard never appeared. Mirror the scraper's _JOB_FIELDS exactly (spec §3.1): backend writes
+# return the full row. The worker only WRITES analytics* fields; the rest round-trip in the response.
+_FULL_JOB_FIELDS = (
+    "id status steamUrl appId gameName headerImage price totalReviews pctPositive "
+    "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt "
+    "analyticsStatus analyticsErrorMessage analyticsJson"
+)
+# getJob is a direct query (not delivered over a subscription), so it only needs the fields the
+# handler actually reads to make its gating decisions.
+_GET = "query Get($id: ID!) { getJob(id: $id) { id status analyticsStatus } }"
 _UPDATE = (
     "mutation Update($input: UpdateJobInput!, $cond: ModelJobConditionInput) "
-    f"{{ updateJob(input: $input, condition: $cond) {{ {_JOB_FIELDS} }} }}"
+    f"{{ updateJob(input: $input, condition: $cond) {{ {_FULL_JOB_FIELDS} }} }}"
 )
 
 
