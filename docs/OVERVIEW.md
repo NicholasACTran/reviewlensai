@@ -68,8 +68,8 @@ corpus (done — `docs/specs/2026-06-01-phase-3-chat-boundaries-and-corpus-desig
 `chat/red-team/`), (b) re-decides the enforcement stack in an architecture
 brainstorm, then (c) builds the bot (`ChatIngester` + `ChatTurn` + chosen
 grounding/guardrails), the schema additions (`Job.chatStatus`,
-`Job.chatErrorMessage`, a `ChatMessage` model), and the FE chat UI — **none of
-which exist yet.**
+`Job.chatErrorMessage`), direct Function URL response streaming (no `ChatMessage`
+model), and the FE chat UI — **none of which exist yet.**
 
 ### Phase 4: Tuning and additional functionality (future)
 
