@@ -17,7 +17,7 @@ Lambda in Phase 1 for simplicity.) See `scraper/docs/CONTEXT.md` for more detail
 
 ### Analytics
 
-Triggered by the scraper's custom `ScrapeSucceeded` EventBridge event (on the `reviewlensai` bus), an AnalyticsSubmitter Lambda queues a Python Analytics Batch job on Fargate. The Batch job runs over the S3 data that was scraped and produces summarized data analytics (sentiment series, word associations, helpful reviews) which it writes back onto the same `Job` row via AppSync mutation for the frontend to subscribe to and display. See `analytics/docs/CONTEXT.md` for more details.
+Triggered by the scraper's custom `ScrapeSucceeded` EventBridge event (on the `reviewlensai` bus), a single Python 3.12 Lambda reads the scraped reviews from S3 and computes summarized analytics using classical NLTK techniques (VADER weekly sentiment, perceptron POS + PMI word/phrase associations, top helpful reviews). It writes the result back onto the same `Job` row via an AppSync `updateJob` mutation — `analyticsStatus` plus a JSON-stringified `analyticsJson` payload — for the frontend to subscribe to and display. Failed or throttled invocations route to an SQS dead-letter queue. (The original AnalyticsSubmitter + Batch/Fargate/ECR design was replaced with this single Lambda in Phase 2 for simplicity.) See `analytics/docs/CONTEXT.md` for more details.
 
 ### Chat
 
