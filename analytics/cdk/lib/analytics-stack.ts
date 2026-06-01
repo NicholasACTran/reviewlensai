@@ -32,6 +32,7 @@ export class AnalyticsStack extends Stack {
       environment: {
         APPSYNC_URL: appsyncUrl, APPSYNC_API_KEY: appsyncApiKey,
         S3_BUCKET: bucketName, NLTK_DATA: "/var/task/nltk_data",
+        EVENT_BUS_NAME: busName,
       },
     });
     fn.configureAsyncInvoke({ retryAttempts: 0, onFailure: new SqsDestination(dlq) });
@@ -40,6 +41,7 @@ export class AnalyticsStack extends Stack {
     bucket.grantRead(fn, "jobs/*");
 
     const bus = events.EventBus.fromEventBusName(this, "ReviewLensBus", busName);
+    bus.grantPutEventsTo(fn);
     new events.Rule(this, "AnalyticsRule", {
       eventBus: bus,
       eventPattern: { source: ["reviewlensai.scraper"], detailType: ["ScrapeSucceeded"] },

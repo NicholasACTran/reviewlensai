@@ -50,3 +50,14 @@ test("S3 read grant: s3:GetObject* scoped to jobs/*", () => {
   });
   expect(JSON.stringify(t.toJSON())).toContain("jobs/*");
 });
+test("Lambda env includes EVENT_BUS_NAME for the analytics-succeeded emission", () => {
+  synth().hasResourceProperties("AWS::Lambda::Function", {
+    Environment: { Variables: Match.objectLike({ EVENT_BUS_NAME: "reviewlensai" }) },
+  });
+});
+test("IAM policy grants events:PutEvents so the Lambda can emit AnalyticsSucceeded", () => {
+  // CDK emits Action as a plain string (not an array) when there is only one action.
+  // Use a raw JSON substring check to avoid fighting the Match.arrayWith vs string mismatch.
+  const t = synth();
+  expect(JSON.stringify(t.toJSON())).toContain('"events:PutEvents"');
+});
