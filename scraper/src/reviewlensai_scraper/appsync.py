@@ -7,10 +7,14 @@ from .log import log_json
 class AppSyncError(Exception): ...
 
 # Full Job selectionSet (spec §3.1: backend writes return the full row so any consumer of the
-# mutation response never sees an omitted-as-null field).
+# mutation response never sees an omitted-as-null field). The analytics* fields are a LOAD-BEARING
+# cross-domain contract: they must exist in the app schema while this scraper is deployed, or every
+# createJob/updateJob response errors "field undefined". The app schema (PR 2-A) must never drop them
+# while this scraper is live. The scraper never WRITES them — they only round-trip in the response.
 _JOB_FIELDS = (
     "id status steamUrl appId gameName headerImage price totalReviews pctPositive "
-    "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt"
+    "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt "
+    "analyticsStatus analyticsErrorMessage analyticsJson"
 )
 _CREATE = f"""
 mutation Create($input: CreateJobInput!) {{ createJob(input: $input) {{ {_JOB_FIELDS} }} }}
