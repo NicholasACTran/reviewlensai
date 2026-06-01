@@ -3,7 +3,7 @@ import json
 import os
 from typing import Any
 import boto3
-from .appsync import AppSyncClient
+from .appsync import AppSyncClient, AppSyncError
 from .errors import S3ReadError
 from .payload import build_payload
 from .s3io import read_scrape_json
@@ -21,20 +21,17 @@ def _read_doc(key: str) -> dict[str, Any]:
 
 
 def _write_terminal(client: AppSyncClient, job_id: str, status: str, **kw: Any) -> dict[str, Any]:
-    """Terminal SUCCEEDED/FAILED write (guarded on RUNNING). On a write EXCEPTION,
+    """Terminal SUCCEEDED/FAILED write (guarded on RUNNING). On a write EXCEPTION or a guard-miss,
     emit worker_failed_terminal_write_failed and re-raise → non-zero exit → DLQ (spec §8)."""
     try:
         if not client.update_analytics(job_id, status=status, **kw):
-            log_json(
-                "worker_failed_terminal_write_failed",
-                job_id=job_id,
-                status=status,
-                reason="guard_miss",
-            )
+            log_json("worker_failed_terminal_write_failed", job_id=job_id, status=status, reason="guard_miss")
+            raise AppSyncError(f"terminal {status} write lost its RUNNING guard")
     except Exception as e:  # noqa: BLE001
-        log_json(
-            "worker_failed_terminal_write_failed", job_id=job_id, status=status, error=str(e)
-        )
+        if not isinstance(e, AppSyncError):
+            log_json(
+                "worker_failed_terminal_write_failed", job_id=job_id, status=status, error=str(e)
+            )
         raise
     return {"status": status}
 
@@ -43,9 +40,12 @@ def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
     detail = (event or {}).get("detail") or {}
     job_id, s3_key = detail.get("jobId"), detail.get("s3Key")
     log_json("worker_invoked", job_id=job_id)
-    if not job_id or not s3_key:
+    if not job_id:
         log_json("worker_skipped", reason="no_jobid")
         return {"skipped": "no_jobid"}
+    if not s3_key:
+        log_json("worker_skipped", reason="no_s3key", job_id=job_id)
+        return {"skipped": "no_s3key"}
 
     client = _client()
     row = client.get_job(job_id)

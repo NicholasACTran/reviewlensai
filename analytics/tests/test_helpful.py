@@ -18,3 +18,14 @@ def test_text_capped_and_playtime_hours(make_review):
     pos, _ = helpful_reviews([make_review(1, long, True, 100, votes_up=3, playtime=180)])
     assert len(pos[0]["text"]) == 1000
     assert pos[0]["playtimeForeverHours"] == 3.0   # 180 min / 60
+
+
+def test_tiebreak_by_votes_funny_then_newer(make_review):
+    rv = [make_review(1, "a", True, 200, votes_up=5, votes_funny=2),
+          make_review(2, "b", True, 100, votes_up=5, votes_funny=1)]
+    pos, _ = helpful_reviews(rv)
+    assert pos[0]["votesFunny"] == 2                      # higher votes_funny wins the tie
+    rv2 = [make_review(3, "c", True, 300, votes_up=5, votes_funny=0),
+           make_review(4, "d", True, 100, votes_up=5, votes_funny=0)]
+    pos2, _ = helpful_reviews(rv2)
+    assert pos2[0]["createdAt"] == 300                    # newer wins when votes equal

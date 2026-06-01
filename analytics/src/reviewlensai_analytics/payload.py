@@ -15,7 +15,7 @@ def build_payload(doc: dict[str, Any]) -> dict[str, Any]:
     reviews = doc.get("reviews") or []
     summary = doc.get("summary") or {}
     game_name = ((doc.get("game") or {}).get("name") or "")
-    total_reviews = int(summary.get("totalReviews") or 0)
+    tr = summary.get("totalReviews")
 
     english = _english(reviews)
     has_data = len(reviews) > 0
@@ -37,7 +37,7 @@ def build_payload(doc: dict[str, Any]) -> dict[str, Any]:
     pos, neg = helpful_reviews(reviews)  # language-agnostic
     return {
         "hasData": has_data,
-        "coversFullHistory": len(reviews) >= total_reviews,
+        "coversFullHistory": isinstance(tr, int) and len(reviews) >= tr,
         "totalAnalyzed": len(reviews),
         "englishReviewCount": len(english),
         "sentiment": {"weekly": weekly, "analyzedAvgCompound": analyzed_avg},

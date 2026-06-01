@@ -72,3 +72,21 @@ def test_terminal_write_exception_reraises_for_dlq(monkeypatch):
     monkeypatch.setattr(main, "_read_doc", lambda key: {"reviews": []})
     with pytest.raises(RuntimeError):  # re-raised → non-zero exit → DLQ (spec §8)
         main.handler(_event(), None)
+
+
+def test_terminal_write_guard_miss_reraises(monkeypatch):
+    import pytest
+    from reviewlensai_analytics.appsync import AppSyncError
+
+    fas = FakeAS({"id": "j1", "status": "SUCCEEDED", "s3Key": "k", "analyticsStatus": None})
+
+    def update(jid, **kw):
+        if kw.get("guard_not_started"):
+            return True  # win the RUNNING guard
+        return False  # terminal SUCCEEDED write loses its RUNNING guard
+
+    fas.update_analytics = update
+    monkeypatch.setattr(main, "_client", lambda: fas)
+    monkeypatch.setattr(main, "_read_doc", lambda key: {"reviews": []})
+    with pytest.raises(AppSyncError):  # guard-miss raises → non-zero exit → DLQ (spec §8)
+        main.handler(_event(), None)
