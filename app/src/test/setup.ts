@@ -7,7 +7,9 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 // jsdom lacks matchMedia (used by any animated waiting screen)
-Object.defineProperty(window, "matchMedia", {
-  writable: true,
-  value: (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }),
-});
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }),
+  });
+}
