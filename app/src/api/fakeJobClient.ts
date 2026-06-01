@@ -28,7 +28,8 @@ export class FakeJobClient implements JobClient {
   seed(seed: Seed): void {
     const row: Job = {
       gameName: null, headerImage: null, price: null, totalReviews: null, pctPositive: null,
-      scrapedReviews: null, s3Key: null, errorMessage: null, ...seed, status: "PENDING",
+      scrapedReviews: null, s3Key: null, errorMessage: null,
+      analyticsStatus: null, analyticsErrorMessage: null, analyticsJson: null, ...seed, status: "PENDING",
     };
     this.set(seed.id, row);
     this.schedule(seed.id, 1, "RUNNING");

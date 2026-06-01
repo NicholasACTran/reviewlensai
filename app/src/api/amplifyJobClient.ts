@@ -25,5 +25,7 @@ function normalize(r: any): Job {
     gameName: r.gameName ?? null, headerImage: r.headerImage ?? null, price: r.price ?? null,
     totalReviews: r.totalReviews ?? null, pctPositive: r.pctPositive ?? null,
     scrapedReviews: r.scrapedReviews ?? null, s3Key: r.s3Key ?? null, errorMessage: r.errorMessage ?? null,
+    analyticsStatus: r.analyticsStatus ?? null, analyticsErrorMessage: r.analyticsErrorMessage ?? null,
+    analyticsJson: r.analyticsJson ?? null,
   };
 }
