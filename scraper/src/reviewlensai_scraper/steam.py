@@ -44,9 +44,12 @@ def trim_review(raw: dict[str, Any]) -> dict[str, Any]:
 
 def fetch_review_summary(app_id: str) -> tuple[int, int]:
     """Returns (total_reviews, total_positive) via a dedicated summary request.
-    NOTE (follow-up): the first `filter=recent` page (cursor='*') ALSO includes these totals in its
-    query_summary, so this extra call is redundant and could be folded into scrape_reviews' first
-    page to save one Steam request. Kept separate for now to avoid churning the core tests pre-deploy."""
+    NOTE (Phase 2, unverified): it was hypothesized that the first `filter=recent` page
+    (cursor='*') also returns these totals in its query_summary, which would let us fold
+    this call into scrape_reviews' first page and save one Steam request. This was NOT
+    verified — Steam may populate query_summary differently under `filter=recent` than
+    `filter=all`. Do not remove this dedicated call without confirming both total_reviews
+    AND total_positive match `filter=all` across several appIds (incl. 0-review and >10k)."""
     body = _request_reviews(app_id, {"num_per_page": "0", "filter": "all"})
     qs = body.get("query_summary", {})
     return qs.get("total_reviews", 0), qs.get("total_positive", 0)

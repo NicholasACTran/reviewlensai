@@ -218,5 +218,6 @@ Written to `jobs/{jobId}/{appId}.json` in the Scraper's private S3 bucket. **Not
 | `/reviewlensai/amplify/url`            | App      | Scraper CDK | Amplify hosting URL (CORS origin + PM agent base URL) |
 | `/reviewlensai/scraper/validatorUrl`   | Scraper  | App CI      | Function URL; written to `VITE_VALIDATOR_URL` |
 | `/reviewlensai/scraper/eventBusName`   | Scraper  | Phase 2     | Name of the `reviewlensai` custom EventBridge bus |
+| `/reviewlensai/scraper/bucketName`     | Scraper  | Phase 2     | Scrape-output S3 bucket name (analytics S3 read grant + worker `S3_BUCKET`) |
 
 **Deploy order is a hard build dependency.** The Scraper CDK reads `appsync/*` and `amplify/url` at synth time. Order: (1) deploy App → (2) deploy Scraper → (3) write `VITE_VALIDATOR_URL` to the Amplify branch env and trigger a rebuild.

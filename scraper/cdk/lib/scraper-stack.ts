@@ -107,5 +107,11 @@ export class ScraperStack extends Stack {
       parameterName: "/reviewlensai/scraper/validatorUrl",
       stringValue: url.url,
     });
+    // Phase 2: analytics reads raw scrape data from this bucket; it needs the bucket
+    // name at synth for the s3:GetObject grant + worker S3_BUCKET env (spec §6.1).
+    new ssm.StringParameter(this, "BucketNameParam", {
+      parameterName: "/reviewlensai/scraper/bucketName",
+      stringValue: bucket.bucketName,
+    });
   }
 }
