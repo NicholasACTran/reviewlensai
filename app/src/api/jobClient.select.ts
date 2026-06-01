@@ -1,10 +1,11 @@
+import { generateClient } from "aws-amplify/data";
 import type { JobClient } from "./jobClient";
 import { FakeJobClient } from "./fakeJobClient";
+import { AmplifyJobClient } from "./amplifyJobClient";
 import { config } from "../config";
 
 export function getJobClient(): JobClient {
   if (config.useFake) return new FakeJobClient();
-  // Real client wired in Task 8:
-  // return new AmplifyJobClient(generateClient().models);
-  throw new Error("Amplify client not configured; set VITE_USE_FAKE=true for local dev.");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new AmplifyJobClient(generateClient().models as any); // called lazily by App (non-fake path only)
 }

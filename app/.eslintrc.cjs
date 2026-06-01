@@ -4,7 +4,7 @@ module.exports = {
   extends: ["eslint:recommended", "plugin:@typescript-eslint/recommended", "plugin:react-hooks/recommended"],
   parser: "@typescript-eslint/parser",
   parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-  ignorePatterns: ["dist", ".eslintrc.cjs", "amplify/**/amplify_outputs*"],
+  ignorePatterns: ["dist", ".eslintrc.cjs", "amplify/**/amplify_outputs*", "**/*.js"],
   rules: {},
   overrides: [
     {
