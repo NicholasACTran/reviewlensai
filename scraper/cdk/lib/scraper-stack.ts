@@ -71,11 +71,12 @@ export class ScraperStack extends Stack {
 
     const url = validatorFn.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
-      // OPTIONS must be allowed or the browser preflight is rejected at the Function URL layer
-      // before the handler's OPTIONS branch runs.
+      // The Function URL auto-handles the CORS OPTIONS preflight from this config — OPTIONS is NOT
+      // a valid allowedMethods value (CloudFormation rejects it); listing POST + the allowed
+      // origin/headers is what makes the browser preflight succeed.
       cors: {
         allowedOrigins: [amplifyUrl],
-        allowedMethods: [lambda.HttpMethod.POST, lambda.HttpMethod.OPTIONS],
+        allowedMethods: [lambda.HttpMethod.POST],
         allowedHeaders: ["content-type"],
       },
     });
