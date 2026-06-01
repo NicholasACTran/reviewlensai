@@ -36,3 +36,8 @@ def test_retries_on_5xx_then_succeeds():
     responses.post(URL, json={"data": {"updateJob": {"id": "j1"}}})
     assert make().transition_failed("j1", "Scrape failed. Try again.") is True
     assert len(responses.calls) == 2
+
+def test_selectionset_carries_chat_fields():
+    from reviewlensai_scraper.appsync import _JOB_FIELDS
+    assert "chatStatus" in _JOB_FIELDS
+    assert "chatErrorMessage" in _JOB_FIELDS
