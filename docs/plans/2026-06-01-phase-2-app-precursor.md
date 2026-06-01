@@ -165,9 +165,11 @@ Expected: all four `OK ...` lines print. This definitively confirms PR-3's `{ an
 Run:
 ```bash
 cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai/app" \
-  && npx ampx sandbox delete --identifier precursor-validate --yes
+  && npx ampx sandbox delete --identifier precursor-validate --yes \
+  && git checkout -- amplify_outputs.json \
+  && git status --short amplify_outputs.json
 ```
-Expected: sandbox stack deleted. (Important — leaving it costs money and clutters the account.) Note: `amplify_outputs.json` now points at the deleted sandbox; do NOT commit it. Verify it's untracked/ignored: `git status --short app/amplify_outputs.json` should show nothing staged.
+Expected: sandbox stack deleted (Important — leaving it costs money). **`amplify_outputs.json` is git-TRACKED** (committed from before this branch), and `ampx sandbox` repointed it at the now-deleted sandbox API — so `git checkout -- amplify_outputs.json` restores the staging-pointing version. The final `git status` must show **nothing** for that file (clean). Never commit the sandbox-pointing variant.
 
 ---
 
