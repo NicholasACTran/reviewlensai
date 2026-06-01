@@ -1,5 +1,6 @@
 name: app-deploy
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["app/**", ".github/workflows/app-deploy.yml"]
@@ -25,7 +26,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
-      - name: Deploy Amplify backend (pipeline)
+      - name: Deploy Amplify Gen 2 backend (regenerates amplify_outputs.json)
         run: npx ampx pipeline-deploy --branch main --app-id ${{ secrets.AMPLIFY_APP_ID }}
       - name: Publish Amplify hosting URL to SSM (read from the API, never string-templated)
         run: |
@@ -34,3 +35,19 @@ jobs:
           # Fail loudly if the URL is malformed — it becomes the Validator CORS origin (spec §6).
           case "$URL" in https://main.*.amplifyapp.com) ;; *) echo "Bad Amplify URL: $URL" && exit 1 ;; esac
           aws ssm put-parameter --name /reviewlensai/amplify/url --type String --overwrite --value "$URL"
+      - name: Build frontend (bundles real outputs + validator URL if the scraper is deployed)
+        run: |
+          VURL=$(aws ssm get-parameter --name /reviewlensai/scraper/validatorUrl --query Parameter.Value --output text 2>/dev/null || echo "")
+          echo "VITE_VALIDATOR_URL=${VURL:-<not set yet>}"
+          VITE_VALIDATOR_URL="$VURL" npm run build
+      - name: Deploy frontend to Amplify Hosting (manual zip deployment)
+        env:
+          APP_ID: ${{ secrets.AMPLIFY_APP_ID }}
+        run: |
+          (cd dist && zip -qr ../dist.zip .)
+          OUT=$(aws amplify create-deployment --app-id "$APP_ID" --branch-name main)
+          JOB_ID=$(echo "$OUT" | jq -r '.jobId')
+          UPLOAD_URL=$(echo "$OUT" | jq -r '.zipUploadUrl')
+          curl -s -H "Content-Type: application/zip" --upload-file dist.zip "$UPLOAD_URL"
+          aws amplify start-deployment --app-id "$APP_ID" --branch-name main --job-id "$JOB_ID"
+          echo "Frontend deployment started (job $JOB_ID)."

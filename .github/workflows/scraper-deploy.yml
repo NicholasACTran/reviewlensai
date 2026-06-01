@@ -1,11 +1,13 @@
 name: scraper-deploy
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["scraper/**", ".github/workflows/scraper-deploy.yml"]
 permissions:
   id-token: write
   contents: read
+  actions: write
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -21,7 +23,7 @@ jobs:
         run: |
           python -m pip install -e ".[dev]"
           python -m pytest -q
-          ruff check src tests
+          ruff check src tests scripts
 
       - uses: actions/setup-node@v4
         with:
@@ -39,8 +41,7 @@ jobs:
           cp -r src/reviewlensai_scraper build/
           pip install requests -t build/
         # boto3 is in the Lambda runtime; only `requests` is vendored into the clean build/
-        # dir. This matches Code.fromAsset("../build") in the CDK stack. The source tree is
-        # never mutated so the asset hash stays stable across runs.
+        # dir. This matches Code.fromAsset("../build") in the CDK stack.
 
       - name: CDK unit tests + deploy (reads app SSM params at synth — app must be deployed first)
         working-directory: scraper/cdk
@@ -48,18 +49,11 @@ jobs:
           npm ci
           npm test           # jest stack assertions (../build exists from the prior step)
           npx cdk deploy --require-approval never
+        # The CDK stack writes /reviewlensai/scraper/validatorUrl to SSM.
 
-      - name: Feed Validator URL back to the app (spec §6 step 3)
+      - name: Trigger app frontend rebuild (picks up the new validatorUrl)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VURL=$(aws ssm get-parameter \
-            --name /reviewlensai/scraper/validatorUrl \
-            --query Parameter.Value \
-            --output text)
-          aws amplify update-branch \
-            --app-id "${{ secrets.AMPLIFY_APP_ID }}" \
-            --branch-name main \
-            --environment-variables "VITE_VALIDATOR_URL=${VURL}"
-          aws amplify start-job \
-            --app-id "${{ secrets.AMPLIFY_APP_ID }}" \
-            --branch-name main \
-            --job-type RELEASE
+          gh workflow run app-deploy.yml --ref main \
+            || echo "Could not auto-trigger app-deploy; re-run it manually to bake VITE_VALIDATOR_URL."
