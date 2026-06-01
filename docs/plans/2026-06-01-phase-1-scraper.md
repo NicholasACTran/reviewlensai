@@ -1120,7 +1120,7 @@ This closes the deploy-time-only assumptions the unit tests cannot exercise (inp
 ```python
 """Run after Plan 1 (app) is deployed. Reads AppSync url+key from SSM, then proves the
 write-contract the AppSyncClient depends on. Exits non-zero on any mismatch."""
-import sys, uuid, boto3
+import uuid, boto3
 from reviewlensai_scraper.appsync import AppSyncClient
 
 ssm = boto3.client("ssm")
