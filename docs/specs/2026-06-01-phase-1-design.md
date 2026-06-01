@@ -1,6 +1,6 @@
 # Phase 1 Design — Scraper + Basic App
 
-**Status:** Reviewed (DA rounds 1–2 resolved, blocker-free) — ready for user review → implementation plan
+**Status:** Reviewed (DA rounds 1–2 resolved, blocker-free); v2.2 patch from the plan-phase DA panel. Plans drafted & DA-reviewed — ready for user review.
 **Date:** 2026-06-01
 **Scope:** One contract-first spec covering two domains built in parallel — the **scraper** (Python Lambdas + S3) and the **app** (Amplify Gen 2 + React) — coupled by a shared `Job` row.
 
@@ -123,7 +123,7 @@ The `Job` row is shared by multiple writers now (Validator, Scraper) and more la
 - Validator Lambda + Function URL; Scraper Lambda + DLQ + async-config (retries 0, on-failure → DLQ) + reserved concurrency 3.
 - S3 bucket (+ lifecycle). Custom EventBridge bus `reviewlensai` (+ SSM export of its name/ARN).
 - Log groups.
-- **Alarms:** CloudWatch alarm on DLQ `ApproximateNumberOfMessagesVisible > 0` and on Scraper Lambda `Errors`, wired to an SNS topic (no subscription required for the PoC — alarm state is the signal). Runbook note: a Scraper **throttle** (reserved-concurrency=3 exhausted) surfaces as a Validator-observed invoke failure → user Try-Again, and does **not** reach the DLQ (the DLQ only catches accepted-then-crashed async invocations) — so an empty DLQ during a throttle storm is by design.
+- **Alarms:** CloudWatch alarm on DLQ `ApproximateNumberOfMessagesVisible > 0` and on Scraper Lambda `Errors`, wired to an SNS topic (no subscription required for the PoC — alarm state is the signal). Runbook note: the Validator's invoke is **async** (`InvocationType: Event`) so it returns 202 immediately even when the Scraper is at its reserved-concurrency=3 ceiling — the Validator does **not** observe the throttle. A throttled event, with `retryAttempts: 0`, is routed by Lambda's async machinery to the **DLQ**, and the `Job` row stays `PENDING` until the FE **staleness timeout** (§5.2) shows Try-Again. So under a throttle storm the DLQ fills (alarmed) and users see Try-Again via the timeout — *not* an immediate Validator error. (Hard crashes after the row reached `RUNNING` also land in the DLQ.) This is the accepted PoC throttle behavior; reserved concurrency is the deliberate cost ceiling.
 - **IAM:** Validator: `lambda:InvokeFunction` on the Scraper. Scraper: `s3:PutObject` on the bucket, `events:PutEvents` on the `reviewlensai` bus. **Backend AppSync writes use the API key (x-api-key), not IAM** — so neither Lambda needs an `appsync:GraphQL` grant. SSM reads/writes per §6.
 
 ---
@@ -222,6 +222,7 @@ docs/             # this spec, OVERVIEW, PRDs
 
 ## 12. Revision history
 
+- **v2.2 (2026-06-01)** — Correctness fix surfaced by the *plan* DA panel: the §4.4 throttle runbook note was wrong. An async (`Event`) invoke returns 202 even when the Scraper is throttled, so the Validator can't observe it; a throttled event goes to the DLQ and the row stays `PENDING` until the FE staleness timeout — corrected to describe that behavior (no Validator-observed Try-Again on throttle).
 - **v2.1 (2026-06-01)** — DA round-2 verification resolved two new blockers the v2 invoke-failure path introduced: added the `PENDING→FAILED` guarded transition to §3.1 and **partitioned field ownership by guarded transition** (so `errorMessage` can be written by the Validator on `PENDING→FAILED` and the Scraper on `RUNNING→FAILED` without violating single-writer safety). Also: staleness-timeout margin note (§5.2), guarded-no-op unit test (§8), and a throttle-vs-DLQ runbook note (§4.4). Round-2 verifier confirmed no further blockers.
 - **v2 (2026-06-01)** — Devil's-Advocate panel (correctness / blast-radius / simplicity) resolved:
   - **Removed** the server-side scheduled stuck-RUNNING sweep (race + complexity); replaced with in-Lambda `FAILED` + DLQ alarm + FE client-side staleness timeout.

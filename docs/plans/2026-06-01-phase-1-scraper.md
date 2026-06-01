@@ -71,13 +71,19 @@ Run from repo root (these are the same endpoints validated during brainstorming)
 ```bash
 mkdir -p scraper/tests/fixtures
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-# Use a small-review game to keep fixtures tiny; appId 2622380 is an example — pick any live game.
+# Use a small-review game to keep fixtures tiny; 413150 (Stardew Valley) is an example — pick any live game.
 curl -s -A "$UA" "https://store.steampowered.com/api/appdetails?appids=413150&cc=us&l=english" -o scraper/tests/fixtures/appdetails.json
+# SUMMARY request (filter=all, num_per_page=0) — this is the one that returns total_reviews/total_positive:
+curl -s -A "$UA" "https://store.steampowered.com/appreviews/413150?json=1&num_per_page=0&filter=all&language=all&purchase_type=all" -o scraper/tests/fixtures/appreviews_summary.json
+# PAGE request (filter=recent) — review bodies, paginated by cursor:
 curl -s -A "$UA" "https://store.steampowered.com/appreviews/413150?json=1&num_per_page=100&filter=recent&language=all&purchase_type=all&cursor=*" -o scraper/tests/fixtures/appreviews_page1.json
 ```
-Then **hand-trim** `appreviews_page1.json` to ~5 reviews and create:
-- `appreviews_page2.json` — copy of page1 with a **different `cursor`** value and 5 *different* `recommendationid`s, plus **one duplicate** `recommendationid` from page1 (to exercise dedup).
-- `appreviews_empty.json` — `{ "success": 1, "query_summary": { "num_reviews": 0 }, "cursor": "AoJ...", "reviews": [] }` (end-of-stream).
+- `appreviews_summary.json` — keep as captured; it has `query_summary.total_reviews` and `total_positive`. (Verify both keys are present; if Steam returned them only under `filter=all`, that's exactly why we use a separate summary call.)
+Then **hand-trim** `appreviews_page1.json` to ~5 reviews and set its `"cursor"` to an explicit token like `"CURSOR_P1"` (NOT `"*"`), then create:
+- `appreviews_page2.json` — copy of page1 with `"cursor": "CURSOR_P2"`, 5 *different* `recommendationid`s, plus **one duplicate** `recommendationid` from page1 (to exercise dedup).
+- `appreviews_empty.json` — `{ "success": 1, "query_summary": { "num_reviews": 0 }, "cursor": "CURSOR_END", "reviews": [] }` (end-of-stream).
+
+> Explicit, distinct cursor tokens make the pagination tests deterministic instead of depending on opaque captured tokens.
 
 > Why hand-trim: keeps fixtures readable and lets tests assert exact counts. The captured structure is real; only the volume is reduced.
 
@@ -94,6 +100,8 @@ def load(name): return json.loads((FIX / name).read_text(encoding="utf-8"))
 
 @pytest.fixture
 def appdetails(): return load("appdetails.json")
+@pytest.fixture
+def reviews_summary(): return load("appreviews_summary.json")
 @pytest.fixture
 def reviews_page1(): return load("appreviews_page1.json")
 @pytest.fixture
@@ -206,33 +214,42 @@ def test_fetch_appdetails_not_found():
     assert ok is False and data is None
 
 @responses.activate
-def test_paginate_dedups_and_caps(reviews_page1, reviews_page2, reviews_empty):
-    # page1 -> page2 (has 1 dup) -> empty
-    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_page1)
-    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_page2)
-    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_empty)
-    result = steam.scrape_reviews(APPID, max_reviews=1000, delay_s=0)
-    ids = [r["recommendationid"] for r in result.reviews]
-    assert len(ids) == len(set(ids))                       # no dups
-    assert result.total_reviews == reviews_page1["query_summary"]["total_reviews"]  # from page 1
-    assert result.scraped == len(result.reviews)
+def test_fetch_review_summary(reviews_summary):
+    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_summary)
+    total, positive = steam.fetch_review_summary(APPID)
+    assert total == reviews_summary["query_summary"]["total_reviews"]
+    assert positive == reviews_summary["query_summary"]["total_positive"]
 
 @responses.activate
-def test_paginate_respects_cap(reviews_page1):
-    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_page1)
+def test_paginate_dedups_and_caps(reviews_summary, reviews_page1, reviews_page2, reviews_empty):
+    # `responses` replays same-URL mocks in registration order:
+    # summary (filter=all) -> page1 -> page2 (1 dup id) -> empty
+    for body in (reviews_summary, reviews_page1, reviews_page2, reviews_empty):
+        responses.get("https://store.steampowered.com/appreviews/" + APPID, json=body)
+    result = steam.scrape_reviews(APPID, max_reviews=1000, delay_s=0)
+    ids = [r["recommendationid"] for r in result.reviews]
+    assert len(ids) == len(set(ids))                                         # no dups
+    assert result.total_reviews == reviews_summary["query_summary"]["total_reviews"]  # from SUMMARY
+    assert result.scraped == len(result.reviews)
+    assert len(responses.calls) == 4                                          # proves pagination advanced
+
+@responses.activate
+def test_paginate_respects_cap(reviews_summary, reviews_page1):
+    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_summary)
+    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_page1)  # >=2 reviews
     result = steam.scrape_reviews(APPID, max_reviews=2, delay_s=0)
     assert result.scraped == 2
 
 @responses.activate
-def test_paginate_stops_on_repeated_cursor(reviews_page1):
-    # same cursor returned twice -> end of stream sentinel
+def test_paginate_stops_on_repeated_cursor(reviews_summary, reviews_page1):
     same = {**reviews_page1, "cursor": "SAMECURSOR"}
+    responses.get("https://store.steampowered.com/appreviews/" + APPID, json=reviews_summary)
     responses.get("https://store.steampowered.com/appreviews/" + APPID, json=same)
     responses.get("https://store.steampowered.com/appreviews/" + APPID, json=same)
     result = steam.scrape_reviews(APPID, max_reviews=10_000, delay_s=0)
-    # second identical cursor must terminate; reviews not double-counted
     ids = [r["recommendationid"] for r in result.reviews]
-    assert len(ids) == len(set(ids))
+    assert len(ids) == len(set(ids))                                          # repeated cursor terminates
+    assert len(responses.calls) == 3                                          # summary + 2 identical pages
 
 def test_trim_review_keeps_only_contract_fields(reviews_page1):
     raw = reviews_page1["reviews"][0]
@@ -257,7 +274,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import quote
 import requests
 
 UA = "ReviewLensAI/1.0 (+https://github.com/NicholasACTran/reviewlensai)"
@@ -298,17 +314,22 @@ def trim_review(raw: dict[str, Any]) -> dict[str, Any]:
     out["author"] = {k: author[k] for k in _KEEP_AUTHOR if k in author}
     return out
 
+def fetch_review_summary(app_id: str) -> tuple[int, int]:
+    """Totals come from a DEDICATED summary request. With `filter=recent` Steam does NOT
+    populate query_summary.total_reviews/total_positive; `filter=all&num_per_page=0` does."""
+    body = _request_reviews(app_id, {"num_per_page": "0", "filter": "all"})
+    qs = body.get("query_summary", {})
+    return qs.get("total_reviews", 0), qs.get("total_positive", 0)
+
 def scrape_reviews(app_id: str, max_reviews: int, delay_s: float = 0.75) -> ScrapeResult:
+    total_reviews, total_positive = fetch_review_summary(app_id)   # totals (filter=all)
+    result = ScrapeResult(total_reviews=total_reviews, total_positive=total_positive)
     seen: set[str] = set()
-    result: ScrapeResult | None = None
     cursor = "*"
-    while True:
-        page = _get_reviews_page(app_id, cursor)
+    while True:                                                    # bodies (filter=recent)
+        page = _request_reviews(app_id, {"num_per_page": "100", "filter": "recent", "cursor": cursor})
         if not page.get("success", 1):
             raise SteamReviewsUnavailable(f"appreviews success=false for {app_id}")
-        if result is None:
-            qs = page.get("query_summary", {})
-            result = ScrapeResult(total_reviews=qs.get("total_reviews", 0), total_positive=qs.get("total_positive", 0))
         for raw in page.get("reviews", []):
             rid = str(raw.get("recommendationid"))
             if rid in seen:
@@ -324,12 +345,12 @@ def scrape_reviews(app_id: str, max_reviews: int, delay_s: float = 0.75) -> Scra
         if delay_s:
             time.sleep(delay_s)
 
-def _get_reviews_page(app_id: str, cursor: str) -> dict[str, Any]:
+def _request_reviews(app_id: str, extra: dict[str, str]) -> dict[str, Any]:
+    """GET /appreviews with retry on 429/5xx. `requests` URL-encodes params once (incl. cursor)."""
     url = f"{BASE}/appreviews/{app_id}"
-    params = {"json": "1", "num_per_page": "100", "filter": "recent",
-              "language": "all", "purchase_type": "all", "cursor": quote(cursor, safe="")}
+    params = {"json": "1", "language": "all", "purchase_type": "all", **extra}
     last_exc: Exception | None = None
-    for attempt in range(3):                       # spec §4.2: max 3 tries/page on 429/5xx
+    for attempt in range(3):                       # spec §4.2: max 3 tries on 429/5xx
         try:
             r = requests.get(url, params=params, headers={"User-Agent": UA}, timeout=TIMEOUT)
             if r.status_code in (429, 500, 502, 503, 504):
@@ -341,14 +362,11 @@ def _get_reviews_page(app_id: str, cursor: str) -> dict[str, Any]:
             time.sleep(0.5 * (attempt + 1))
     raise SteamError(f"appreviews failed after retries: {last_exc}")
 ```
-> Note: `quote(cursor)` then passing via `params` double-encodes; pass the pre-encoded cursor by building the query string directly OR pass the raw cursor to `params` (requests encodes once). Choose ONE: here, drop `quote(...)` and let `requests` encode — change `"cursor": quote(cursor, safe="")` to `"cursor": cursor`. Keep the test `test_paginate_stops_on_repeated_cursor` green either way.
 
-- [ ] **Step 4: Apply the cursor-encoding fix and run**
-
-Edit `steam.py`: change `"cursor": quote(cursor, safe="")` → `"cursor": cursor` (let `requests` encode once). Remove the now-unused `quote` import.
+- [ ] **Step 4: Run the tests**
 
 Run: `cd scraper && python -m pytest tests/test_steam.py -q`
-Expected: PASS (6 tests).
+Expected: PASS (6 tests). The cursor is passed raw to `requests` `params`, which encodes it exactly once.
 
 - [ ] **Step 5: Commit**
 
@@ -488,7 +506,7 @@ class AppSyncClient:
                 time.sleep(0.5)
         raise AppSyncError(f"AppSync call failed after retries: {last}")
 ```
-> The `ModelJobConditionInput`/`CreateJobInput` names are the Amplify-generated GraphQL input types. Confirm exact names from the deployed schema during integration (Plan 1 generates them); adjust the query strings if Amplify pluralizes/namespaces differently.
+> **Integration-only assumptions — verified in Task 9, not here:** (1) the input-type names `CreateJobInput`/`UpdateJobInput`/`ModelJobConditionInput` and mutation names `createJob`/`updateJob` follow Amplify Gen 2 convention but must be confirmed against the deployed schema. (2) The `status` enum is sent as a JSON **string** (`"RUNNING"`) in both the input and the condition (`{"status": {"eq": "PENDING"}}`); AppSync serializes GraphQL enums as strings over the wire, but the *condition* field may require the enum-typed input shape — confirm against the live API. (3) The `_update` no-op matcher keys on the substring `"ConditionalCheckFailed"`; the **exact** `errorType` AppSync returns for a failed condition (commonly `DynamoDB:ConditionalCheckFailedException`) MUST be observed and the matcher pinned to it in Task 9 — if it differs, every guard-miss becomes a hard failure → DLQ. These three are exactly what Task 9's live-AppSync verification exercises before staging E2E.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -552,6 +570,7 @@ def test_happy_path_creates_job_and_invokes(deps, monkeypatch, appdetails):
     appsync.create_job.assert_called_once()
     assert appsync.create_job.call_args.kwargs["app_id"] == "413150"
     lam.invoke.assert_called_once()
+    assert lam.invoke.call_args.kwargs["InvocationType"] == "Event"   # async, not sync
     payload = json.loads(lam.invoke.call_args.kwargs["Payload"])
     assert payload["jobId"] == job_id and payload["appId"] == "413150"
     assert "appdetails" in payload                       # passes payload (spec §4.1 step 4)
@@ -913,7 +932,8 @@ import * as events from "aws-cdk-lib/aws-events";
 import * as cw from "aws-cdk-lib/aws-cloudwatch";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import { FunctionUrlAuthType, Code, Runtime } from "aws-cdk-lib/aws-lambda";
-import { EventInvokeConfig } from "aws-cdk-lib/aws-lambda";
+import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
+import { TreatMissingData } from "aws-cdk-lib/aws-cloudwatch";
 
 export class ScraperStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -937,7 +957,9 @@ export class ScraperStack extends Stack {
 
     const dlq = new sqs.Queue(this, "ScraperDlq", { retentionPeriod: Duration.days(14) });
 
-    const code = Code.fromAsset("../src");  // packages reviewlensai_scraper; deps via layer/bundling in CI
+    // Asset is a CLEAN build dir populated by CI (Task 8): reviewlensai_scraper/ + vendored deps,
+    // NEVER the source tree (keeps `requests` out of src/ and the asset hash stable).
+    const code = Code.fromAsset("../build");
     const commonEnv = { APPSYNC_URL: appsyncUrl, APPSYNC_API_KEY: appsyncApiKey };
 
     const scraperFn = new lambda.Function(this, "ScraperFn", {
@@ -945,9 +967,7 @@ export class ScraperStack extends Stack {
       timeout: Duration.seconds(600), memorySize: 1024, reservedConcurrentExecutions: 3,
       environment: { ...commonEnv, S3_BUCKET: bucket.bucketName, EVENT_BUS_NAME: bus.eventBusName, MAX_REVIEWS: "10000" },
     });
-    new EventInvokeConfig(this, "ScraperAsyncCfg", {
-      function: scraperFn, retryAttempts: 0, onFailure: { bind: () => ({ destination: dlq.queueArn }) } as any,
-    });
+    scraperFn.configureAsyncInvoke({ retryAttempts: 0, onFailure: new SqsDestination(dlq) });
     bucket.grantPut(scraperFn);
     bus.grantPutEventsTo(scraperFn);
 
@@ -960,17 +980,21 @@ export class ScraperStack extends Stack {
 
     const url = validatorFn.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
-      cors: { allowedOrigins: [amplifyUrl], allowedMethods: [lambda.HttpMethod.POST] },
+      // OPTIONS must be allowed or the browser preflight is rejected at the Function URL layer
+      // before the handler's OPTIONS branch runs.
+      cors: { allowedOrigins: [amplifyUrl], allowedMethods: [lambda.HttpMethod.POST, lambda.HttpMethod.OPTIONS],
+              allowedHeaders: ["content-type"] },
     });
 
-    // Alarms (spec §4.4): DLQ depth + scraper errors.
+    // Alarms (spec §4.4): DLQ depth + scraper errors. NOT_BREACHING avoids INSUFFICIENT_DATA noise
+    // on sparse SQS/Lambda metrics.
     new cw.Alarm(this, "DlqDepthAlarm", {
       metric: dlq.metricApproximateNumberOfMessagesVisible(), threshold: 0, evaluationPeriods: 1,
-      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD, treatMissingData: TreatMissingData.NOT_BREACHING,
     });
     new cw.Alarm(this, "ScraperErrorsAlarm", {
       metric: scraperFn.metricErrors(), threshold: 0, evaluationPeriods: 1,
-      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD, treatMissingData: TreatMissingData.NOT_BREACHING,
     });
 
     // Outputs back to the contract (spec §6).
@@ -983,9 +1007,8 @@ export class ScraperStack extends Stack {
   }
 }
 ```
-> The `EventInvokeConfig` `onFailure` accessor is illustrative — use `aws-cdk-lib/aws-lambda-destinations` `SqsDestination(dlq)` with `scraperFn.configureAsyncInvoke({ retryAttempts: 0, onFailure: new SqsDestination(dlq) })` for the real, type-clean API. Replace the `EventInvokeConfig` block with that during implementation; the test only checks retries/DLQ existence.
 
-- [ ] **Step 5: Apply the destinations fix, write `bin/scraper.ts`, run tests**
+- [ ] **Step 5: Write `bin/scraper.ts`, run tests**
 
 `scraper/cdk/bin/scraper.ts`:
 ```ts
@@ -998,14 +1021,9 @@ new ScraperStack(app, "ReviewLensScraperStack", {
 });
 ```
 
-Replace the async-invoke block in `scraper-stack.ts`:
-```ts
-import { SqsDestination } from "aws-cdk-lib/aws-lambda-destinations";
-// ...
-scraperFn.configureAsyncInvoke({ retryAttempts: 0, onFailure: new SqsDestination(dlq) });
-```
+> The stack test (Step 2) uses `Code.fromAsset("../build")`; create a throwaway `scraper/build/` dir (e.g. `mkdir -p scraper/build && touch scraper/build/.keep`) so synth/test doesn't fail on a missing asset path. CI replaces it with the real build (Task 8).
 
-Run: `cd scraper/cdk && npm test`
+Run: `cd scraper/cdk && mkdir -p ../build && npm test`
 Expected: PASS (5 tests).
 
 - [ ] **Step 6: Commit**
@@ -1052,12 +1070,16 @@ jobs:
         with: { node-version: "20" }
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: "${{ secrets.AWS_DEPLOY_ROLE_ARN }}", aws-region: us-east-1 }
+      - name: Build Lambda asset (CLEAN build dir — never the source tree)
+        working-directory: scraper
+        run: |
+          rm -rf build && mkdir -p build
+          cp -r src/reviewlensai_scraper build/
+          pip install requests -t build/        # boto3 is in the Lambda runtime; vendor requests only
       - name: CDK deploy (reads app SSM params at synth — app must be deployed first)
         working-directory: scraper/cdk
         run: |
           npm ci
-          # bundle python deps into the asset (requests/boto3 provided by runtime; vendor requests)
-          pip install requests -t ../src
           npx cdk deploy --require-approval never
       - name: Feed Validator URL back to the app (spec §6 step 3)
         run: |
@@ -1066,7 +1088,7 @@ jobs:
             --environment-variables VITE_VALIDATOR_URL=$VURL
           aws amplify start-job --app-id ${{ secrets.AMPLIFY_APP_ID }} --branch-name main --job-type RELEASE
 ```
-> `boto3` is in the Lambda runtime; `requests` must be vendored into the asset (the `pip install requests -t ../src` step). Confirm the asset path matches `Code.fromAsset("../src")`.
+> `boto3` is in the Lambda runtime; only `requests` is vendored — into the clean `scraper/build/` dir (already gitignored via the root `build/` rule), matching `Code.fromAsset("../build")`. The source tree is never mutated.
 
 - [ ] **Step 3: Write `.claude/agents/phase1-pm.md`** (spec §8 E2E)
 
@@ -1086,6 +1108,54 @@ git commit -m "docs(scraper): API contract + deploy workflow + Playwright PM age
 
 ---
 
+## Task 9: Live-AppSync contract verification (run AFTER Plan 1 deploys, BEFORE staging E2E)
+
+**Files:**
+- Create: `scraper/scripts/verify_appsync_contract.py`
+
+This closes the deploy-time-only assumptions the unit tests cannot exercise (input-type names, enum-string serialization, and the exact `ConditionalCheckFailed` errorType). It is a one-shot script run against the **deployed** AppSync API; it gates the staging E2E.
+
+- [ ] **Step 1: Write `scraper/scripts/verify_appsync_contract.py`**
+
+```python
+"""Run after Plan 1 (app) is deployed. Reads AppSync url+key from SSM, then proves the
+write-contract the AppSyncClient depends on. Exits non-zero on any mismatch."""
+import sys, uuid, boto3
+from reviewlensai_scraper.appsync import AppSyncClient
+
+ssm = boto3.client("ssm")
+def p(name): return ssm.get_parameter(Name=name)["Parameter"]["Value"]
+
+url, key = p("/reviewlensai/appsync/url"), p("/reviewlensai/appsync/apiKey")
+client = AppSyncClient(url, key)
+job_id = f"verify-{uuid.uuid4()}"
+
+# 1. createJob with the enum as a string must succeed.
+client.create_job(job_id=job_id, steam_url="https://store.steampowered.com/app/1/", app_id="1",
+                  game_name="Verify", header_image=None, price=None, expires_at=0)
+# 2. The guarded PENDING->RUNNING must commit.
+assert client.transition_running(job_id) is True, "RUNNING transition rejected"
+# 3. A second PENDING-guarded transition must be a clean NO-OP (False), not raise.
+ok = client.transition_failed(job_id, "x", from_status="PENDING")
+assert ok is False, "expected ConditionalCheckFailed no-op; matcher mis-pinned or errorType differs"
+print("AppSync contract verified for", job_id)
+```
+
+- [ ] **Step 2: Run it against staging and pin findings**
+
+Run (with AWS creds for the staging account):
+`cd scraper && python scripts/verify_appsync_contract.py`
+Expected: prints "AppSync contract verified". **If step 3 raises instead of returning False**, capture the real `errorType` from the raised `AppSyncError` and **pin the `_update` matcher** in `appsync.py` to that exact string, then re-run. If `createJob` rejects the enum string, switch the input to the enum-typed value and update Task 4's tests. Do not proceed to staging E2E until this passes.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scraper/scripts/verify_appsync_contract.py
+git commit -m "test(scraper): live-AppSync contract verification (enum, condition no-op, type names)"
+```
+
+---
+
 ## Self-review (completed by plan author)
 
 - **Spec §4.1 Validator:** Task 5 (shape/existence/create/invoke/invoke-fail guard, CORS). ✓
@@ -1095,4 +1165,13 @@ git commit -m "docs(scraper): API contract + deploy workflow + Playwright PM age
 - **Spec §4.4 infra + §6 SSM:** Task 7 (2 Lambdas, FnURL NONE, DLQ+retries 0, reserved concurrency 3, bucket+lifecycle, custom bus, 2 alarms, SSM read/write, IAM grants). ✓
 - **Spec §9 deliverables:** Task 8 (API_CONTRACT.md, deploy workflow, VITE_VALIDATOR_URL feedback, PM agent). ✓
 - **Spec §8 fixtures are real:** Task 1 Step 2 captures live Steam JSON. ✓
-- **Implementation risks flagged inline:** exact Amplify GraphQL input-type names (Task 4 Step 3), the `configureAsyncInvoke`/destinations API (Task 7 Step 4–5), and vendoring `requests` into the asset (Task 8 Step 2) — each noted at its step for verification during execution.
+- **Remaining integration assumption** (exact Amplify input-type names + `ConditionalCheckFailed` errorType + enum serialization) is no longer a silent flag — it's an explicit gating task (Task 9) run against live AppSync before staging E2E.
+
+### DA-panel (plans) round-1 resolutions
+- **Blocker — `query_summary` totals:** `filter=recent` doesn't return totals; added `fetch_review_summary` (`filter=all&num_per_page=0`) so `pctPositive` is correct (Task 1/3).
+- **Blocker — pagination tests fragile:** explicit cursor tokens + `len(responses.calls)` assertions prove advancement (Task 3).
+- **Blocker — conditional-mutation seam unverified:** new Task 9 live-AppSync verification; matcher pinned there.
+- **Blocker — CORS missing OPTIONS:** added `OPTIONS` to the Function URL `allowedMethods` (Task 7).
+- **Blocker — packaging vendored into `src/`:** switched to a clean `build/` asset dir (Task 7/8).
+- **Concerns:** removed the two "wrong-code-then-fix" patterns (cursor encoding, async-invoke destinations) — correct code shown directly; alarms get `treatMissingData: NOT_BREACHING`; `InvocationType: "Event"` asserted (Task 5).
+- **Throttle UX (spec divergence, see spec §4.4 v2.2):** under reserved-concurrency exhaustion the async invoke returns 202 then routes to the DLQ, leaving the row `PENDING` until the FE staleness timeout — NOT a Validator Try-Again. Accepted as the PoC throttle behavior; spec runbook corrected.
