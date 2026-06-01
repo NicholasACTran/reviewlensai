@@ -52,13 +52,3 @@ Hard stop at `MAX_ROUNDS`/`COST_CEILING` → escalate.
 
 Boundary #2 (fresh per-job session) is architecture-asserted, not corpus-tested.
 
-## After writing
-- Sanity-check it renders as valid markdown (the nested code fences are intentional).
-- Commit:
-  ```
-  git add chat/red-team/README.md
-  git commit -m "docs(chat): add red-team corpus schema + post-build runbook"
-  ```
-
-## Report back
-Status, the commit SHA, and confirm the file was written verbatim. Do not run the linter (this task only adds a README).
