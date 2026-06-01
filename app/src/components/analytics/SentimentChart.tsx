@@ -10,7 +10,7 @@ export function SentimentChart({ data }: { data: AnalyticsPayload }) {
   const series = gran === "weekly" ? data.sentiment.weekly : toMonthly(data.sentiment.weekly);
   return (
     <div className="sentiment-chart">
-      <div className="toggle" role="tablist">
+      <div className="toggle" role="group" aria-label="Chart granularity">
         <button aria-pressed={gran === "weekly"} onClick={() => setGran("weekly")}>Weekly</button>
         <button aria-pressed={gran === "monthly"} onClick={() => setGran("monthly")}>Monthly</button>
       </div>

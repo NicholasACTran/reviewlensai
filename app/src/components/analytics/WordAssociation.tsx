@@ -7,8 +7,8 @@ function Chips({ items }: { items: Keyword[] }) {
   if (items.length === 0) return <span className="chip-empty">—</span>;
   return (
     <ul className="chips">
-      {items.map((k) => (
-        <li key={k.term} className="chip">
+      {items.map((k, i) => (
+        <li key={`${k.term}-${i}`} className="chip">
           <span className="chip-term">{k.term}</span>
           <span className="chip-count">{k.count}</span>
         </li>
@@ -24,7 +24,7 @@ export function WordAssociation({ words }: { words: AnalyticsPayload["words"] })
   return (
     <div className="word-association">
       <h3>Word association</h3>
-      <div className="toggle" role="tablist">
+      <div className="toggle" role="group" aria-label="Keyword lens">
         <button aria-pressed={lens === "overall"} onClick={() => setLens("overall")}>Overall</button>
         <button aria-pressed={lens === "praise"} onClick={() => setLens("praise")}>Praise</button>
         <button aria-pressed={lens === "complaint"} onClick={() => setLens("complaint")}>Complaint</button>
