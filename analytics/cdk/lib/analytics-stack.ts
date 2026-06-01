@@ -43,7 +43,13 @@ export class AnalyticsStack extends Stack {
     new events.Rule(this, "AnalyticsRule", {
       eventBus: bus,
       eventPattern: { source: ["reviewlensai.scraper"], detailType: ["ScrapeSucceeded"] },
-      targets: [new targets.LambdaFunction(fn)],
+      // Two distinct retry layers: (1) Lambda async-invoke (configureAsyncInvoke above) governs
+      // EXECUTION failures (handler threw) -> retry 0 -> dlq. (2) This EventBridge target retry
+      // governs DELIVERY failures (e.g. the invoke is throttled under reservedConcurrency:3 when
+      // scrapes finish in a burst). Leaving it at the AWS default would retry delivery for 24h /
+      // 185 attempts; bound it to 2 and route exhausted deliveries to the SAME dlq so a sustained
+      // throttle is captured rather than silently dropped.
+      targets: [new targets.LambdaFunction(fn, { retryAttempts: 2, deadLetterQueue: dlq })],
     });
 
     new cw.Alarm(this, "AnalyticsDlqDepthAlarm", {

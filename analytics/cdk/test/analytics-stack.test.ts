@@ -28,6 +28,14 @@ test("DLQ + two alarms", () => {
   t.resourceCountIs("AWS::SQS::Queue", 1);
   t.resourceCountIs("AWS::CloudWatch::Alarm", 2);
 });
+test("EventBridge target bounds delivery retries to 2 and dead-letters to the DLQ (no silent drop on throttle)", () => {
+  synth().hasResourceProperties("AWS::Events::Rule", {
+    Targets: Match.arrayWith([Match.objectLike({
+      RetryPolicy: { MaximumRetryAttempts: 2 },
+      DeadLetterConfig: { Arn: Match.anyValue() },
+    })]),
+  });
+});
 test("Lambda env carries SSM-fed config + NLTK_DATA", () => {
   synth().hasResourceProperties("AWS::Lambda::Function", {
     Environment: { Variables: Match.objectLike({ S3_BUCKET: "scrape-bucket", NLTK_DATA: "/var/task/nltk_data" }) },

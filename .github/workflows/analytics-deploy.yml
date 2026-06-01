@@ -34,6 +34,9 @@ jobs:
         run: |
           rm -rf build && mkdir -p build
           cp -r src/reviewlensai_analytics build/
+          # Drop any __pycache__ the prior pytest step compiled into src so it doesn't bloat the
+          # asset / churn the CDK asset hash on every push.
+          find build/reviewlensai_analytics -name __pycache__ -type d -prune -exec rm -rf {} +
           pip install "nltk==3.9.1" requests -t build/
           python -m nltk.downloader -d build/nltk_data \
             vader_lexicon averaged_perceptron_tagger_eng punkt_tab stopwords
