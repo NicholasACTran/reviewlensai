@@ -14,9 +14,10 @@ Job's retrieved review and analytics chunks.
   logical components: `ChatIngester` + `ChatTurn`.
 - **Knowledge:** scraped review JSON files (from `scraper/` S3) + the
   analytics JSON (from `analytics/`).
-- **Frontend integration:** `app/` calls the `ChatTurn` Lambda Function URL
-  directly (no direct Bedrock calls from the browser). Chat messages flow
-  back to the FE via AppSync subscription on a `ChatMessage` model.
+- **Frontend integration (planned):** `app/` will call the `ChatTurn` Lambda
+  Function URL directly (no direct Bedrock calls from the browser). Chat
+  messages will flow back to the FE via AppSync subscription on a `ChatMessage`
+  model.
 
 ## Tech Stack (CANDIDATE — not decided)
 
@@ -25,7 +26,7 @@ Job's retrieved review and analytics chunks.
 > Phase 1/2 consistently dropped heavy infra; the items below are *candidates*
 > carried over from the original aspirational design, **not** decisions. The
 > stack is chosen in a separate architecture brainstorm before any build, and
-> `chat/docs/ARCHITECTURE.md` (plus any deploy workflow) is written then.
+> a `chat/docs/ARCHITECTURE.md` (plus any deploy workflow) is written then.
 
 - **Grounding:** TBD — a vector knowledge base (e.g. Bedrock KB + Aurora
   pgvector) *or* a lighter retrieval approach. To be decided.
