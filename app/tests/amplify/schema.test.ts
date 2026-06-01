@@ -22,6 +22,15 @@ describe("Job schema", () => {
     expect(job.status.type).toBe("enum");
     expect(job.status.values).toEqual(["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]);
   });
+  it("declares the Phase-2 analytics fields as nullable strings", () => {
+    const job = (schema as any).data.types.Job.data.fields;
+    // analyticsStatus is a.string() (NOT a.enum) so ModelStringInput exposes
+    // attributeExists for the worker's idempotency guard (spec §3/§16).
+    expect(job.analyticsStatus.type).not.toBe("enum");
+    expect(job.analyticsStatus.data.required).not.toBe(true);
+    expect(job.analyticsErrorMessage.data.required).not.toBe(true);
+    expect(job.analyticsJson.data.required).not.toBe(true);
+  });
 });
 
 import type { Schema } from "../../amplify/data/resource";

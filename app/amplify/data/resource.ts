@@ -15,6 +15,14 @@ export const schema = a.schema({
       s3Key: a.string(),
       errorMessage: a.string(),
       expiresAt: a.integer(),          // TTL attribute (epoch seconds)
+      // Phase 2 analytics — sole writer is the Analytics Lambda. The attribute is
+      // ABSENT (not NULL) until analytics starts; the worker's idempotency guard
+      // uses attribute_not_exists (spec §3/§7). analyticsStatus is a.string()
+      // (NOT a.enum) so its ModelStringInput exposes attributeExists (spec §16);
+      // values are the closed set "RUNNING"|"SUCCEEDED"|"FAILED".
+      analyticsStatus: a.string(),
+      analyticsErrorMessage: a.string(),   // nullable; closed error set (spec §8)
+      analyticsJson: a.string(),           // nullable; JSON-stringified AnalyticsPayload (spec §5)
     })
     .authorization((allow) => [allow.publicApiKey()]),
 });
