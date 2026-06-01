@@ -1,0 +1,64 @@
+name: scraper-deploy
+on:
+  push:
+    branches: [main]
+    paths: ["scraper/**", ".github/workflows/scraper-deploy.yml"]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit tests + lint
+        working-directory: scraper
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q
+          ruff check src tests
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "${{ secrets.AWS_DEPLOY_ROLE_ARN }}"
+          aws-region: us-east-1
+
+      - name: Build Lambda asset (CLEAN build dir — never the source tree)
+        working-directory: scraper
+        run: |
+          rm -rf build && mkdir -p build
+          cp -r src/reviewlensai_scraper build/
+          pip install requests -t build/
+        # boto3 is in the Lambda runtime; only `requests` is vendored into the clean build/
+        # dir. This matches Code.fromAsset("../build") in the CDK stack. The source tree is
+        # never mutated so the asset hash stays stable across runs.
+
+      - name: CDK deploy (reads app SSM params at synth — app must be deployed first)
+        working-directory: scraper/cdk
+        run: |
+          npm ci
+          npx cdk deploy --require-approval never
+
+      - name: Feed Validator URL back to the app (spec §6 step 3)
+        run: |
+          VURL=$(aws ssm get-parameter \
+            --name /reviewlensai/scraper/validatorUrl \
+            --query Parameter.Value \
+            --output text)
+          aws amplify update-branch \
+            --app-id "${{ secrets.AMPLIFY_APP_ID }}" \
+            --branch-name main \
+            --environment-variables "VITE_VALIDATOR_URL=${VURL}"
+          aws amplify start-job \
+            --app-id "${{ secrets.AMPLIFY_APP_ID }}" \
+            --branch-name main \
+            --job-type RELEASE

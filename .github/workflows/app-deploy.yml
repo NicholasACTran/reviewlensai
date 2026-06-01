@@ -1,0 +1,36 @@
+name: app-deploy
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/app-deploy.yml"]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run lint && npm run typecheck && npm test
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Deploy Amplify backend (pipeline)
+        run: npx ampx pipeline-deploy --branch main --app-id ${{ secrets.AMPLIFY_APP_ID }}
+      - name: Publish Amplify hosting URL to SSM (read from the API, never string-templated)
+        run: |
+          DOMAIN=$(aws amplify get-app --app-id ${{ secrets.AMPLIFY_APP_ID }} --query 'app.defaultDomain' --output text)
+          URL="https://main.${DOMAIN}"
+          # Fail loudly if the URL is malformed — it becomes the Validator CORS origin (spec §6).
+          case "$URL" in https://main.*.amplifyapp.com) ;; *) echo "Bad Amplify URL: $URL" && exit 1 ;; esac
+          aws ssm put-parameter --name /reviewlensai/amplify/url --type String --overwrite --value "$URL"
