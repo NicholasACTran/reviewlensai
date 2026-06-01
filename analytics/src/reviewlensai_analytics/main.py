@@ -10,6 +10,19 @@ from .s3io import read_scrape_json
 from .log import log_json
 
 _S3 = boto3.client("s3")
+_EVENTS = boto3.client("events")
+
+
+def _emit_analytics_succeeded(job_id: str, s3_key: str) -> None:
+    try:                                              # NON-FATAL
+        _EVENTS.put_events(Entries=[{
+            "Source": "reviewlensai.analytics",
+            "DetailType": "AnalyticsSucceeded",
+            "EventBusName": os.environ["EVENT_BUS_NAME"],
+            "Detail": json.dumps({"jobId": job_id, "s3Key": s3_key}),
+        }])
+    except Exception as e:  # noqa: BLE001
+        log_json("worker_emit_failed", job_id=job_id, error=str(e))
 
 
 def _client() -> AppSyncClient:
@@ -83,5 +96,6 @@ def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
         english=payload["englishReviewCount"],
     )
     res = _write_terminal(client, job_id, "SUCCEEDED", analytics_json=json.dumps(payload))
+    _emit_analytics_succeeded(job_id, s3_key)
     res["hasData"] = payload["hasData"]
     return res
