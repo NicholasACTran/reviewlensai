@@ -126,10 +126,16 @@ analyticsJson: a.string(),          // nullable; JSON-stringified AnalyticsPaylo
 - **Mutation input vs response selectionSet (normative, corrects round-1 wording).**
   The analytics `updateJob` **input** contains only `id`, the analytics field(s)
   being written, and the guard `condition` — it never echoes scraper-owned fields
-  (no read-modify-write of foreign fields, per API_CONTRACT §2.1). The **response
-  selectionSet** returns the full `Job` row (same pattern the scraper already uses
-  at `appsync.py`). `observeQuery` delivers full DynamoDB snapshots to the FE, so
-  no partial-merge bug arises.
+  (no read-modify-write of foreign fields, per API_CONTRACT §2.1).
+  - **Scraper** writers return the full `Job` row in their mutation **response**
+    selectionSet (its `appsync.py` 18-field `_JOB_FIELDS`).
+  - **Analytics worker is explicitly exempt** (amended after plan-DA): its
+    `updateJob`/`getJob` use a **minimal** response selectionSet
+    (`id status s3Key analyticsStatus [analyticsJson]`). This is safe because (a)
+    the worker never consumes the mutation response, and (b) the FE's `observeQuery`
+    re-reads the full DynamoDB item, so the response selectionSet never reaches the
+    FE. Forcing the worker to mirror all 18 field names would add a maintenance
+    mirror it doesn't use. No partial-merge bug arises either way.
 
 ---
 
@@ -223,9 +229,13 @@ A single async Python Lambda, EventBridge-triggered. CDK at
   1024 MB, **600 s**, **reservedConcurrency 3**, async **retryAttempts 0**,
   on-failure → SQS DLQ. **NLTK pinned to an exact version**; the build vendors
   `nltk` + the **exact data packages that version requires** — for NLTK ≥3.8.2
-  that is `vader_lexicon`, `averaged_perceptron_tagger_eng`, `punkt_tab` (the
-  un-suffixed `punkt`/`averaged_perceptron_tagger` names trigger a `LookupError`
-  with no network). `NLTK_DATA` points at the bundled path; **no runtime download**.
+  that is `vader_lexicon`, `averaged_perceptron_tagger_eng`, `punkt_tab`, **and
+  `stopwords`** (the un-suffixed `punkt`/`averaged_perceptron_tagger` names trigger a
+  `LookupError`; omitting `stopwords` silently degrades word-association filtering to
+  a tiny fallback set). `NLTK_DATA` points at the bundled path; **no runtime
+  download**. Note `sentiment.py` instantiates VADER at module import, so a
+  missing/mis-pathed bundle is an import-time crash — the §11 no-network smoke test
+  MUST import the worker modules under the bundled `NLTK_DATA` to catch this.
 - **EventBridge rule** on the `reviewlensai` bus, filtered to
   `Source == "reviewlensai.scraper"` AND `DetailType == "ScrapeSucceeded"`, target
   the Lambda (async). Bus **bound by name** read at synth from SSM
