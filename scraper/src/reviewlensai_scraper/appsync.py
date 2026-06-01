@@ -6,13 +6,19 @@ from .log import log_json
 
 class AppSyncError(Exception): ...
 
-_CREATE = """
-mutation Create($input: CreateJobInput!) { createJob(input: $input) { id status } }
+# Full Job selectionSet (spec §3.1: backend writes return the full row so any consumer of the
+# mutation response never sees an omitted-as-null field).
+_JOB_FIELDS = (
+    "id status steamUrl appId gameName headerImage price totalReviews pctPositive "
+    "scrapedReviews s3Key errorMessage createdAt updatedAt expiresAt"
+)
+_CREATE = f"""
+mutation Create($input: CreateJobInput!) {{ createJob(input: $input) {{ {_JOB_FIELDS} }} }}
 """
-_UPDATE = """
-mutation Update($input: UpdateJobInput!, $cond: ModelJobConditionInput) {
-  updateJob(input: $input, condition: $cond) { id status }
-}
+_UPDATE = f"""
+mutation Update($input: UpdateJobInput!, $cond: ModelJobConditionInput) {{
+  updateJob(input: $input, condition: $cond) {{ {_JOB_FIELDS} }}
+}}
 """
 
 class AppSyncClient:
@@ -64,5 +70,6 @@ class AppSyncClient:
                 return body.get("data")
             except (requests.RequestException, AppSyncError) as e:
                 last = e
-                time.sleep(0.5)
+                if attempt == 0:                       # don't sleep after the final attempt
+                    time.sleep(0.5)
         raise AppSyncError(f"AppSync call failed after retries: {last}")

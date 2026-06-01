@@ -42,10 +42,11 @@ jobs:
         # dir. This matches Code.fromAsset("../build") in the CDK stack. The source tree is
         # never mutated so the asset hash stays stable across runs.
 
-      - name: CDK deploy (reads app SSM params at synth — app must be deployed first)
+      - name: CDK unit tests + deploy (reads app SSM params at synth — app must be deployed first)
         working-directory: scraper/cdk
         run: |
           npm ci
+          npm test           # jest stack assertions (../build exists from the prior step)
           npx cdk deploy --require-approval never
 
       - name: Feed Validator URL back to the app (spec §6 step 3)

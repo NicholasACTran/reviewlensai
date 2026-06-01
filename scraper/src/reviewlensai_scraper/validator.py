@@ -61,9 +61,13 @@ def handler(event: dict, _context) -> dict:
     job_id = str(uuid.uuid4())
     appsync = _appsync()
     price = (details.get("price_overview") or {}).get("final_formatted")
-    appsync.create_job(job_id=job_id, steam_url=url, app_id=app_id,
-                       game_name=details.get("name"), header_image=details.get("header_image"),
-                       price=price, expires_at=int(time.time()) + TTL_DAYS * 86400)
+    try:
+        appsync.create_job(job_id=job_id, steam_url=url, app_id=app_id,
+                           game_name=details.get("name"), header_image=details.get("header_image"),
+                           price=price, expires_at=int(time.time()) + TTL_DAYS * 86400)
+    except Exception as e:  # AppSync down / expired key — return a CORS-headed, taxonomy-consistent error
+        log_json("validator_create_failed", job_id=job_id, error=str(e))
+        return _resp(500, {"error": "Couldn't start the scrape. Try again."})
     log_json("validator_created", job_id=job_id, app_id=app_id)
 
     try:
