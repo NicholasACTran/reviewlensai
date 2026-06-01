@@ -6,7 +6,7 @@
     "resolveJsonModule": true, "isolatedModules": true,
     "jsx": "react-jsx", "strict": true, "noUnusedLocals": true,
     "noUnusedParameters": true, "noFallthroughCasesInSwitch": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vitest/globals", "@testing-library/jest-dom", "vite/client"]
   },
   "include": ["src", "tests", "amplify"],
   "references": [{ "path": "./tsconfig.node.json" }]
