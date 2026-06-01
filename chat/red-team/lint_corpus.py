@@ -7,7 +7,7 @@ import yaml
 
 N_BOUNDARIES = 14
 REFUSAL_CODES = {"OFF_TOPIC", "NON_ENGLISH", "NO_DATA", "BLOCKED"}
-DUAL = ["BLOCKED", "OFF_TOPIC"]
+DUAL = ["BLOCKED", "OFF_TOPIC"]  # list; order-sensitive equality (corpus must use this order)
 CHECKS = {
     "equals_refusal", "refusal_in", "ascii_only", "no_links",
     "no_pii_tokens", "no_slurs", "number_in_analytics", "ignores_injection",
@@ -95,8 +95,8 @@ def validate_corpus(doc, is_positive=False, enforce_multiturn=False):
             raise ValidationError("each entry must be a mapping")
         if e.get("id") in seen:
             raise ValidationError(f"duplicate id: {e.get('id')}")
-        seen.add(e.get("id"))
         _validate_entry(e, is_positive)
+        seen.add(e.get("id"))
         if len(e["turns"]) > 1:
             families_with_multiturn.add(e["family"])
     if enforce_multiturn:
@@ -113,12 +113,13 @@ def validate_file(path, is_positive=False, enforce_multiturn=False):
 def main(argv):
     ok = True
     for path in argv:
+        # CLI convention: files named *positive.yaml use positive rules; *corpus.yaml enforce multi-turn coverage.
         is_pos = path.endswith("positive.yaml")
         enforce = path.endswith("corpus.yaml")
         try:
             n = validate_file(path, is_positive=is_pos, enforce_multiturn=enforce)
             print(f"OK  {path}: {n} entries")
-        except ValidationError as exc:
+        except (ValidationError, OSError, yaml.YAMLError) as exc:
             ok = False
             print(f"FAIL {path}: {exc}")
     return 0 if ok else 1

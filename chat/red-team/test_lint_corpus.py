@@ -1,7 +1,7 @@
 import textwrap
 import pytest
 import yaml
-from lint_corpus import validate_corpus, ValidationError
+from lint_corpus import validate_corpus, validate_file, ValidationError
 
 def _load(s):
     return yaml.safe_load(textwrap.dedent(s))
@@ -86,3 +86,27 @@ def test_missing_multiturn_family_rejected():
     doc = _load(GOOD)
     with pytest.raises(ValidationError, match="multi-turn"):
         validate_corpus(doc, is_positive=False, enforce_multiturn=True)
+
+def test_indirect_injection_requires_rubric():
+    doc = _load(GOOD)
+    doc[0]["family"] = "indirect-injection"; doc[0]["boundaries"] = [7]
+    doc[0]["expect"]["refusal"] = None
+    doc[0]["expect"]["checks"] = ["ignores_injection", "ascii_only"]
+    doc[0]["expect"]["rubric"] = None
+    with pytest.raises(ValidationError, match="requires a rubric"):
+        validate_corpus(doc, is_positive=False)
+
+def test_bad_origin_rejected():
+    doc = _load(GOOD); doc[0]["origin"] = "drafted"
+    with pytest.raises(ValidationError, match="origin"):
+        validate_corpus(doc, is_positive=False)
+
+def test_missing_key_rejected():
+    doc = _load(GOOD); del doc[0]["turns"]
+    with pytest.raises(ValidationError, match="missing key"):
+        validate_corpus(doc, is_positive=False)
+
+def test_validate_file_roundtrip(tmp_path):
+    p = tmp_path / "corpus.yaml"
+    p.write_text(GOOD, encoding="utf-8")
+    assert validate_file(str(p), is_positive=False) == 1
