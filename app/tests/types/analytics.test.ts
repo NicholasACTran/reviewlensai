@@ -15,6 +15,14 @@ describe("parseAnalytics", () => {
     expect(parseAnalytics("not json")).toBeNull();
     expect(parseAnalytics(JSON.stringify({ nope: 1 }))).toBeNull();
   });
+  it("returns null when any one of the six words arrays is missing (so components never .map() a non-array)", () => {
+    const full = JSON.parse(JSON.stringify(fixture));
+    for (const key of ["overallAdjectives","overallPhrases","praiseAdjectives","praisePhrases","complaintAdjectives","complaintPhrases"]) {
+      const broken = JSON.parse(JSON.stringify(full));
+      delete broken.words[key];
+      expect(parseAnalytics(JSON.stringify(broken))).toBeNull();
+    }
+  });
   it("the shared fixture has the exact contract shape (cross-domain drift guard)", () => {
     expect(new Set(Object.keys(fixture))).toEqual(new Set([
       "hasData","coversFullHistory","totalAnalyzed","englishReviewCount","sentiment","words","helpful"]));

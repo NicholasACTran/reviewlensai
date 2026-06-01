@@ -30,8 +30,9 @@ export function parseAnalytics(json: string | null | undefined): AnalyticsPayloa
     const w = p.words as Record<string, unknown> | undefined;
     const h = p.helpful as Record<string, unknown> | undefined;
     if (!s || !Array.isArray(s.weekly)) return null;
-    if (!w || !Array.isArray(w.overallAdjectives) || !Array.isArray(w.praiseAdjectives)
-          || !Array.isArray(w.complaintAdjectives)) return null;
+    if (!w || !Array.isArray(w.overallAdjectives) || !Array.isArray(w.overallPhrases)
+          || !Array.isArray(w.praiseAdjectives) || !Array.isArray(w.praisePhrases)
+          || !Array.isArray(w.complaintAdjectives) || !Array.isArray(w.complaintPhrases)) return null;
     if (!h || !Array.isArray(h.positive) || !Array.isArray(h.negative)) return null;
     return p as unknown as AnalyticsPayload;
   } catch {
