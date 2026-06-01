@@ -129,13 +129,17 @@ analyticsJson: a.string(),          // nullable; JSON-stringified AnalyticsPaylo
   (no read-modify-write of foreign fields, per API_CONTRACT §2.1).
   - **Scraper** writers return the full `Job` row in their mutation **response**
     selectionSet (its `appsync.py` 18-field `_JOB_FIELDS`).
-  - **Analytics worker is explicitly exempt** (amended after plan-DA): its
-    `updateJob`/`getJob` use a **minimal** response selectionSet
-    (`id status s3Key analyticsStatus [analyticsJson]`). This is safe because (a)
-    the worker never consumes the mutation response, and (b) the FE's `observeQuery`
-    re-reads the full DynamoDB item, so the response selectionSet never reaches the
-    FE. Forcing the worker to mirror all 18 field names would add a maintenance
-    mirror it doesn't use. No partial-merge bug arises either way.
+  - **Analytics worker `updateJob` must ALSO return the full `Job` row**
+    (`_FULL_JOB_FIELDS`, mirroring the scraper). ⚠️ **CORRECTION (post-deploy E2E,
+    2026-06-01):** the earlier "worker is exempt / a minimal response selectionSet
+    is safe because `observeQuery` re-reads the full item" reasoning was **WRONG**.
+    AppSync *managed subscriptions deliver the triggering mutation's selection set* —
+    they do NOT re-read the full DynamoDB item — so a minimal `updateJob` response
+    pushed a partial row (foreign fields null) to the FE's `observeQuery`, crashing
+    Amplify's internal merge (`Cannot read properties of null (reading 'id')`) and
+    the dashboard never rendered live. The worker's `updateJob` therefore returns the
+    full row. `getJob` may stay minimal (it's a direct query, never delivered over a
+    subscription). See `analytics/src/reviewlensai_analytics/appsync.py`.
 
 ---
 
