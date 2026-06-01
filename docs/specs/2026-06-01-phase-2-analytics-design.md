@@ -314,10 +314,17 @@ lost-event jobs):
 - `SUCCEEDED` + `!hasData` → "Not enough reviews to analyze."
 - `FAILED` → unobtrusive "Analytics unavailable." (never breaks the scrape view).
 
-**Proposed dashboard** (refinable via the visual companion): (1) sentiment line +
-volume bars with weekly/monthly toggle (monthly derived FE-side), labeled "most
-recent N reviews" when `!coversFullHistory`; (2) word association — praise vs
-complaint columns + overall toggle; (3) helpful reviews pos/neg cards.
+**Dashboard layout — grid (chosen via visual companion):** the existing scrape
+summary (header image, review count, % positive) stays untouched on top. Below it,
+the analytics section is:
+1. **Sentiment-over-time** chart, **full-width** across the top of the section:
+   line (weekly buckets) + review-volume bars on a shared time axis, a
+   weekly/monthly toggle (monthly derived FE-side), and a "based on the most recent
+   N reviews" caption when `!coversFullHistory`.
+2. Beneath it, a **responsive 2-column grid** (collapses to one column on narrow
+   viewports): **left** = word association (praise vs complaint columns + an
+   "overall" toggle); **right** = most-helpful reviews (positive / negative cards,
+   ≤3 each, with helpful/funny counts, playtime, and a `language` label).
 
 **Charting:** add **Recharts** (one dual-axis time series with a toggle — a
 declarative chart lib is genuinely simpler than hand-rolled SVG here; panel
