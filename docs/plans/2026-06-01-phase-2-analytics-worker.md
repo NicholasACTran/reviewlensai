@@ -52,7 +52,7 @@ cd "C:/Users/nicho/OneDrive/Documents/Projects/reviewlensai" \
 name = "reviewlensai-analytics"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["nltk>=3.9", "boto3>=1.34", "requests>=2.32"]
+dependencies = ["nltk==3.9.1", "boto3>=1.34", "requests>=2.32"]  # nltk pinned EXACTLY: data-package names are version-sensitive (spec §6); infra build-step pin must match
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "ruff>=0.6", "responses>=0.25"]
