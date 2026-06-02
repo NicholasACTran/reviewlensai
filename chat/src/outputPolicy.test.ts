@@ -39,3 +39,13 @@ test("a clean grounded answer passes through unchanged", () => {
   const out = "The most common complaints are crashes and bugs.";
   expect(applyOutputPolicy(out, ctx)).toBe(out);
 });
+
+test("a stat within rounding of an analytics number passes (#8 'within rounding')", () => {
+  // ctx has analyticsNumbers {"73"}; 72.8 rounds to 73 -> grounded
+  expect(applyOutputPolicy("Roughly 72.8% are positive.", ctx)).toBe("Roughly 72.8% are positive.");
+});
+
+test("a comma-grouped grounded count is not falsely refused", () => {
+  const c = { analyticsNumbers: new Set(["1234"]), retrievedText: "", sentinel: "S" };
+  expect(applyOutputPolicy("There are 1,234 reviews.", c)).toBe("There are 1,234 reviews.");
+});

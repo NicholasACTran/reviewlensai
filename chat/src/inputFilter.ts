@@ -4,6 +4,9 @@ export const MAX_LEN = 2000;             // tuning param (boundaries #6)
 export const NON_ASCII_REFUSE = 0.2;     // >20% non-ASCII -> NON_ENGLISH (boundaries #5)
 // Allowlist: letters, digits, whitespace, and common chat punctuation (boundaries #6 caveat —
 // keep these or legitimate questions break). Everything else (stray non-ASCII, leftover markup) is stripped.
+// NOTE: keeps a few chars beyond the spec §3 enumerated set ('/','@','#',';','&') because they
+// appear in legitimate questions (e.g. "#1", "a/b"); input link/handle passthrough is contained
+// downstream by no-browse capability (#1) + the OUT link scrub (#4), which strip them from answers.
 const ALLOWED = /[^A-Za-z0-9\s'%?!,.:;"()&@#/\-]/g;
 
 export interface PreFilterResult { refusal?: RefusalCode; prompt: string; }

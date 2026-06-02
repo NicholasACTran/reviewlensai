@@ -11,7 +11,7 @@ const MD_LINK_RE = /\[([^\]]*)\]\([^)]*\)/g;
 const HTML_RE = /<[^>]+>/g;
 const PII_TOKEN_RE = /\{(EMAIL|PHONE|NAME|ADDRESS|AGE|CREDIT_DEBIT_CARD_NUMBER)\}/g;
 // review-statistic numbers: a number immediately tied to % or to "review(s)"
-const STAT_RE = /(\d+(?:\.\d+)?)\s*(?:%|percent|reviews?\b)/gi;
+const STAT_RE = /(\d[\d,]*(?:\.\d+)?)\s*(?:%|percent|reviews?\b)/gi;
 
 function nonAsciiRatio(s: string): number {
   if (!s) return 0;
@@ -30,8 +30,14 @@ export function applyOutputPolicy(text: string, ctx: OutputCtx): string {
   let m: RegExpExecArray | null;
   STAT_RE.lastIndex = 0;
   while ((m = STAT_RE.exec(text)) !== null) {
-    const num = m[1];
-    if (!ctx.analyticsNumbers.has(num) && !hay.includes(num)) return REFUSALS.NO_DATA;
+    const raw = m[1].replace(/,/g, "");          // strip thousands separators
+    const parsed = parseFloat(raw);
+    if (Number.isNaN(parsed)) continue;          // fail-open on unparseable
+    const rounded = String(Math.round(parsed));  // spec §5: match "within rounding"
+    const grounded =
+      ctx.analyticsNumbers.has(raw) || ctx.analyticsNumbers.has(rounded) ||
+      hay.includes(raw) || hay.includes(rounded);
+    if (!grounded) return REFUSALS.NO_DATA;
   }
   // scrub links/HTML (#4) + PII tokens (#11) from the surviving answer
   let out = text.replace(MD_LINK_RE, "$1").replace(URL_RE, "").replace(HTML_RE, "");
